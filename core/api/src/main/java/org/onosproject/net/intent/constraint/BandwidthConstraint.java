@@ -19,6 +19,7 @@ import com.google.common.annotations.Beta;
 
 import org.onlab.util.Bandwidth;
 import org.onlab.util.DataRateUnit;
+import org.onosproject.net.DeviceId;
 import org.onosproject.net.Link;
 import org.onosproject.net.intent.ResourceContext;
 import org.onosproject.net.resource.Resources;
@@ -64,9 +65,12 @@ public final class BandwidthConstraint extends BooleanConstraint {
 
     @Override
     public boolean isValid(Link link, ResourceContext context) {
-        return Stream.of(link.src(), link.dst())
-                .map(cp -> Resources.continuous(cp.deviceId(), cp.port(), Bandwidth.class).resource(bandwidth.bps()))
-                .allMatch(context::isAvailable);
+            return Stream.of(link.src(), link.dst())
+                    // only connection points associated with infrastructure devices have an deviceId
+                    .filter(cp -> cp.elementId() instanceof DeviceId)
+                    .map(cp -> Resources.continuous(cp.deviceId(), cp.port(), Bandwidth.class)
+                            .resource(bandwidth.bps()))
+                    .allMatch(context::isAvailable);
     }
 
     /**

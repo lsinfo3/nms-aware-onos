@@ -73,8 +73,12 @@ public class LatencyConstraint implements Constraint {
     }
 
     private boolean validate(Path path) {
-        double pathLatency = path.links().stream().mapToDouble(this::cost).sum();
-        return Duration.of((long) pathLatency, ChronoUnit.MICROS).compareTo(latency) <= 0;
+        // double pathLatency = path.links().stream().mapToDouble(this::cost).sum();
+        double pathLatency = 0.0;
+        for (Link link : path.links()) {
+            pathLatency += this.cost(link);
+        }
+        return Duration.of((long) pathLatency, ChronoUnit.NANOS).compareTo(latency) <= 0;
     }
 
     @Override
