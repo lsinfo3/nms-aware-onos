@@ -30,6 +30,7 @@
     <description>ONOS sample applications</description>
 
     <modules>
+        <module>ifwd</module>
         <module>acl</module>
         <module>faultmanagement</module>
         <module>fwd</module>
