@@ -35,9 +35,10 @@ import org.onosproject.net.topology.PathService;
 import org.onosproject.net.topology.TopologyEdge;
 
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
+import java.util.Iterator;
 
 /**
  * Base class for compilers of various
@@ -105,7 +106,9 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             throw new PathNotFoundException(one, two);
         }
         // TODO: let's be more intelligent about this eventually
-        return filtered.iterator().next();
+        // shuffling filtered list for a better distribution of the packet flows
+        Random rand = new Random(System.nanoTime());
+        return filtered.get(rand.nextInt(filtered.size()));
     }
 
     /**
@@ -128,7 +131,9 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             throw new PathNotFoundException(one, two);
         }
         // TODO: let's be more intelligent about this eventually
-        return filtered.iterator().next();
+        // shuffling filtered list for a better distribution of the packet flows
+        Random rand = new Random(System.nanoTime());
+        return filtered.get(rand.nextInt(filtered.size()));
     }
 
     /**
@@ -136,7 +141,7 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
      */
     protected class ConstraintBasedLinkWeight implements LinkWeight {
 
-        private final List<Constraint> constraints;
+        protected final List<Constraint> constraints;
 
         /**
          * Creates a new edge-weight function capable of evaluating links
@@ -161,10 +166,11 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             // iterate over all constraints in order and return the weight of
             // the first one with fast fail over the first failure
             Iterator<Constraint> it = constraints.iterator();
-
+            // FIXME: only returns the costs of the last constraint!
             double cost = it.next().cost(edge.link(), resourceService::isAvailable);
             while (it.hasNext() && cost > 0) {
-                if (it.next().cost(edge.link(), resourceService::isAvailable) < 0) {
+                cost = it.next().cost(edge.link(), resourceService::isAvailable);
+                if (cost < 0) {
                     return -1;
                 }
             }
