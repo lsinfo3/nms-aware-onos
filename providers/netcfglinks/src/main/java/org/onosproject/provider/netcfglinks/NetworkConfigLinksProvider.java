@@ -466,8 +466,10 @@ public class NetworkConfigLinksProvider
                          event.type(), event.subject());
                 LinkKey linkKey = (LinkKey) event.subject();
                 if (event.type() == NetworkConfigEvent.Type.CONFIG_ADDED) {
+                    // add the link to the configured link list
                     addLink(linkKey);
                 } else if (event.type() == NetworkConfigEvent.Type.CONFIG_REMOVED) {
+                    // remove link from link list and notify provider service
                     removeLink(linkKey);
                 }
                 log.info("Link reconfigured");
