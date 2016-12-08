@@ -24,6 +24,7 @@ import org.onosproject.net.DeviceId;
 import org.onosproject.net.Link;
 import org.onosproject.net.intent.Constraint;
 import org.onosproject.net.intent.constraint.AnnotationConstraint;
+import org.onosproject.net.intent.constraint.AdvancedAnnotationConstraint;
 import org.onosproject.net.intent.constraint.AsymmetricPathConstraint;
 import org.onosproject.net.intent.constraint.BandwidthConstraint;
 import org.onosproject.net.intent.constraint.LatencyConstraint;
@@ -90,6 +91,26 @@ public final class DecodeConstraintCodecHelper {
                 .asDouble();
 
         return new AnnotationConstraint(key, threshold);
+    }
+
+    /**
+     * Decodes an advanced annotation constraint.
+     *
+     * @return advanced annotation constraint object.
+     */
+    private Constraint decodeAdvancedAnnotationConstraint() {
+        String key = nullIsIllegal(json.get(ConstraintCodec.KEY),
+                ConstraintCodec.KEY + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+                .asText();
+        double threshold = nullIsIllegal(json.get(ConstraintCodec.THRESHOLD),
+                ConstraintCodec.THRESHOLD + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+                .asDouble();
+
+        boolean isUpperLimit = nullIsIllegal(json.get(ConstraintCodec.ISUPPERLIMIT),
+                ConstraintCodec.ISUPPERLIMIT + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+                .asBoolean();
+
+        return new AdvancedAnnotationConstraint(key, threshold, isUpperLimit);
     }
 
     /**
@@ -199,6 +220,8 @@ public final class DecodeConstraintCodecHelper {
             return decodeLinkTypeConstraint();
         } else if (type.equals(AnnotationConstraint.class.getSimpleName())) {
             return decodeAnnotationConstraint();
+        } else if (type.equals(AdvancedAnnotationConstraint.class.getSimpleName())) {
+            return decodeAdvancedAnnotationConstraint();
         }
         throw new IllegalArgumentException("Instruction type "
                 + type + " is not supported");

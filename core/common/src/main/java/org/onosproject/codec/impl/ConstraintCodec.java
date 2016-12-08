@@ -40,6 +40,7 @@ public final class ConstraintCodec extends JsonCodec<Constraint> {
     protected static final String LATENCY_MILLIS = "latencyMillis";
     protected static final String OBSTACLES = "obstacles";
     protected static final String WAYPOINTS = "waypoints";
+    protected static final String ISUPPERLIMIT = "isUpperLimit";
 
     @Override
     public ObjectNode encode(Constraint constraint, CodecContext context) {
