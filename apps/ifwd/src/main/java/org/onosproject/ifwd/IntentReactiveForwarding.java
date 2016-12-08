@@ -170,6 +170,7 @@ public class IntentReactiveForwarding {
 
     // Install a rule forwarding the packet to the specified port.
     private void setUpConnectivity(PacketContext context, HostId srcId, HostId dstId) {
+        // TODO: add tcp/udp src destination for packet flow to selector
         TrafficSelector selector = DefaultTrafficSelector.emptySelector();
         TrafficTreatment treatment = DefaultTrafficTreatment.emptyTreatment();
 

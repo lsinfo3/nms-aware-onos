@@ -21,6 +21,7 @@ import org.onosproject.core.CoreService;
 import org.onosproject.net.NetworkResource;
 import org.onosproject.net.intent.PointToPointIntent;
 import org.onosproject.net.intent.Intent;
+import org.onosproject.net.intent.Key;
 import org.onosproject.net.intent.IntentService;
 import org.onosproject.net.intent.IntentState;
 import org.onosproject.net.intent.HostToHostIntent;
@@ -40,6 +41,7 @@ public final class IntentCodec extends JsonCodec<Intent> {
 
     protected static final String TYPE = "type";
     protected static final String ID = "id";
+    protected static final String KEY = "key";
     protected static final String APP_ID = "appId";
     protected static final String STATE = "state";
     protected static final String PRIORITY = "priority";
@@ -109,6 +111,14 @@ public final class IntentCodec extends JsonCodec<Intent> {
         JsonNode priorityJson = json.get(IntentCodec.PRIORITY);
         if (priorityJson != null) {
             builder.priority(priorityJson.asInt());
+        }
+
+        JsonNode keyNode = json.get(IntentCodec.KEY);
+        if (keyNode != null) {
+            String key = keyNode.asText();
+            if (!key.isEmpty()) {
+                builder.key(Key.of(key, service.getAppId(appId)));
+            }
         }
     }
 }

@@ -17,11 +17,13 @@ package org.onosproject.codec.impl;
 
 import org.onosproject.codec.CodecContext;
 import org.onosproject.codec.JsonCodec;
+import org.onosproject.core.CoreService;
 import org.onosproject.net.HostId;
 import org.onosproject.net.intent.ConnectivityIntent;
 import org.onosproject.net.intent.HostToHostIntent;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.onosproject.net.intent.Key;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onlab.util.Tools.nullIsIllegal;
@@ -59,11 +61,23 @@ public final class HostToHostIntentCodec extends JsonCodec<HostToHostIntent> {
 
         String one = nullIsIllegal(json.get(ONE),
                 ONE + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
-        builder.one(HostId.hostId(one));
+        HostId oneId = HostId.hostId(one);
+        builder.one(oneId);
 
         String two = nullIsIllegal(json.get(TWO),
                 TWO + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
-        builder.two(HostId.hostId(two));
+        HostId twoId = HostId.hostId(two);
+        builder.two(twoId);
+
+        String appId = nullIsIllegal(json.get(IntentCodec.APP_ID),
+                IntentCodec.APP_ID + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
+        CoreService service = context.getService(CoreService.class);
+
+        if (oneId.toString().compareTo(twoId.toString()) < 0) {
+            builder.key(Key.of(oneId.toString() + twoId.toString(), service.getAppId(appId)));
+        } else {
+            builder.key(Key.of(twoId.toString() + oneId.toString(), service.getAppId(appId)));
+        }
 
         return builder.build();
     }

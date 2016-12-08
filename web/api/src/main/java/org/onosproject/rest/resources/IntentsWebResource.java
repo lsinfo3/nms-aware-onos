@@ -33,7 +33,7 @@ import org.slf4j.Logger;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
-import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -154,12 +154,13 @@ public class IntentsWebResource extends AbstractWebResource {
      * BAD_REQUEST if the JSON is invalid
      * @onos.rsModel IntentHost
      */
-    @POST
+    @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createIntent(InputStream stream) {
         try {
             IntentService service = get(IntentService.class);
+            // TODO: check if key is set in json
             ObjectNode root = (ObjectNode) mapper().readTree(stream);
             Intent intent = codec(Intent.class).decode(root, this);
             service.submit(intent);
@@ -174,6 +175,8 @@ public class IntentsWebResource extends AbstractWebResource {
             throw new IllegalArgumentException(ioe);
         }
     }
+
+    // TODO: add PUT statement with extra key value in json?
 
     /**
      * Withdraws intent.
