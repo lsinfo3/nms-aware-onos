@@ -27,6 +27,9 @@ import org.onosproject.net.Host;
 import org.onosproject.net.Link;
 import org.onosproject.net.Path;
 import org.onosproject.net.flow.TrafficSelector;
+import org.onosproject.net.flow.criteria.Criterion;
+import org.onosproject.net.flow.criteria.TcpPortCriterion;
+import org.onosproject.net.flow.criteria.UdpPortCriterion;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.intent.HostToHostIntent;
 import org.onosproject.net.intent.Intent;
@@ -37,6 +40,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.onosproject.net.flow.DefaultTrafficSelector.builder;
 
@@ -104,16 +109,56 @@ public class HostToHostIntentCompiler
     // Creates a path intent from the specified path and original connectivity intent.
     private Intent createPathIntent(Path path, Host src, Host dst,
                                     HostToHostIntent intent) {
-        TrafficSelector selector = builder(intent.selector())
-                .matchEthSrc(src.mac()).matchEthDst(dst.mac()).build();
+
+        TrafficSelector.Builder selectorBuilder = builder(intent.selector())
+                .matchEthSrc(src.mac()).matchEthDst(dst.mac());
+
+        // if source and destination are inverted, invert the traffic selector
+        if (intent.one().equals(dst.id()) && intent.two().equals(src.id())) {
+            invertSelector(selectorBuilder, intent);
+        }
+
         return PathIntent.builder()
                 .appId(intent.appId())
-                .selector(selector)
+                .selector(selectorBuilder.build())
                 .treatment(intent.treatment())
                 .path(path)
                 .constraints(intent.constraints())
                 .priority(intent.priority())
                 .build();
+    }
+    
+    private void invertSelector(TrafficSelector.Builder selectorBuilder, HostToHostIntent intent) {
+
+        // all criterions types defined for the intent selector
+        Set<Criterion.Type> criterionTypes = intent.selector().criteria().stream()
+                .map(c -> c.type())
+                .collect(Collectors.toSet());
+
+        // if the intent selector has an ip protocol criterion
+        if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.IP_PROTO))) {
+
+            // switch tcp/udp tpPort source and destination if present
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.TCP_SRC))) {
+                selectorBuilder.matchTcpDst(((TcpPortCriterion) intent.selector().getCriterion(Criterion.Type.TCP_SRC))
+                                .tcpPort());
+            }
+
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.TCP_DST))) {
+                selectorBuilder.matchTcpSrc(((TcpPortCriterion) intent.selector().getCriterion(Criterion.Type.TCP_DST))
+                                .tcpPort());
+            }
+
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.UDP_SRC))) {
+                selectorBuilder.matchUdpDst(((UdpPortCriterion) intent.selector().getCriterion(Criterion.Type.UDP_SRC))
+                                .udpPort());
+            }
+
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.UDP_SRC))) {
+                selectorBuilder.matchUdpSrc(((UdpPortCriterion) intent.selector().getCriterion(Criterion.Type.UDP_DST))
+                                .udpPort());
+            }
+        }
     }
 
 }

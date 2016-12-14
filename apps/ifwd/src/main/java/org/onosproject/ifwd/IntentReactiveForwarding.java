@@ -22,6 +22,10 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.onlab.packet.Ethernet;
+import org.onlab.packet.IPv4;
+import org.onlab.packet.TCP;
+import org.onlab.packet.UDP;
+import org.onlab.packet.TpPort;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.net.HostId;
@@ -39,7 +43,6 @@ import org.onosproject.net.intent.HostToHostIntent;
 import org.onosproject.net.intent.IntentService;
 import org.onosproject.net.intent.IntentState;
 import org.onosproject.net.intent.Key;
-import org.onosproject.net.intent.constraint.AdvancedAnnotationConstraint;
 import org.onosproject.net.packet.PacketService;
 import org.onosproject.net.packet.PacketProcessor;
 import org.onosproject.net.packet.PacketPriority;
@@ -51,7 +54,9 @@ import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 
 import java.util.EnumSet;
+import java.util.stream.Collectors;
 
+import static org.onlab.packet.Ethernet.TYPE_IPV4;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -168,18 +173,64 @@ public class IntentReactiveForwarding {
         log.info("sending packet: {}", packet);
     }
 
+    /**
+     * Creates a TrafficSelector Builder matching on IPv4's TCP/UDP protocol source and destination ports.
+     *
+     * @param context The packet context.
+     * @return TrafficSelector.Builder
+     */
+    private TrafficSelector.Builder matchIpProtoclPortTrafficSelector(PacketContext context) {
+        TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
+
+        InboundPacket pkt = context.inPacket();
+        Ethernet ethPkt = pkt.parsed();
+
+        // match on the ethernet protocol
+        selectorBuilder.matchEthType(ethPkt.getEtherType());
+
+        if (ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
+            IPv4 ipv4Pkt = (IPv4) ethPkt.getPayload();
+
+            // match on the IP protocol
+            selectorBuilder.matchIPProtocol(ipv4Pkt.getProtocol());
+
+            if (ipv4Pkt.getProtocol() == IPv4.PROTOCOL_TCP) {
+                TCP tcpPkt = (TCP) ipv4Pkt.getPayload();
+
+                // match on the tcp src/dst port
+                selectorBuilder.matchTcpSrc(TpPort.tpPort(tcpPkt.getSourcePort()))
+                        .matchTcpDst(TpPort.tpPort(tcpPkt.getDestinationPort()));
+            } else if (ipv4Pkt.getProtocol() == IPv4.PROTOCOL_UDP) {
+                UDP udpPkt = (UDP) ipv4Pkt.getPayload();
+
+                // match on the udp src/dst port
+                selectorBuilder.matchUdpSrc(TpPort.tpPort(udpPkt.getSourcePort()))
+                        .matchUdpDst(TpPort.tpPort(udpPkt.getDestinationPort()));
+            }
+        }
+        return selectorBuilder;
+    }
+
     // Install a rule forwarding the packet to the specified port.
     private void setUpConnectivity(PacketContext context, HostId srcId, HostId dstId) {
-        // TODO: add tcp/udp src destination for packet flow to selector
-        TrafficSelector selector = DefaultTrafficSelector.emptySelector();
+
+        // use tcp/udp src and dst from packet as selector
+        TrafficSelector selector = matchIpProtoclPortTrafficSelector(context).build();
         TrafficTreatment treatment = DefaultTrafficTreatment.emptyTreatment();
 
         Key key;
         if (srcId.toString().compareTo(dstId.toString()) < 0) {
-            key = Key.of(srcId.toString() + dstId.toString(), appId);
+            key = Key.of(srcId.toString() + dstId.toString() +
+                    selector.criteria().stream().sorted().collect(Collectors.toList()).toString(), appId);
         } else {
-            key = Key.of(dstId.toString() + srcId.toString(), appId);
+            key = Key.of(dstId.toString() + srcId.toString() +
+                    selector.criteria().stream().sorted().collect(Collectors.toList()).toString(), appId);
         }
+
+        // FIXME distinguish intent keys taking the trafficSelector into account!
+        // problem: intents get installed twice, for src/dst host with same selector.
+        // -> resulting in four flows where only two match!
+        // Solution: compile intent right with src/dst tcp/udp TpPorts! ?
 
         // Check if HostToHostIntent has already been submitted
         HostToHostIntent intent = (HostToHostIntent) intentService.getIntent(key);
@@ -217,7 +268,6 @@ public class IntentReactiveForwarding {
             }
 
         } else if (intent == null) {
-            // TODO constraint latency throws nullpointer exception in "latencyConstraint" validate(path) method?
             // if no intent is present, create a new one
             HostToHostIntent hostIntent = HostToHostIntent.builder()
                     .appId(appId)
@@ -230,11 +280,9 @@ public class IntentReactiveForwarding {
                             // new LatencyConstraint(Duration.ofNanos(1200)),
                             // new BandwidthConstraint(Bandwidth.mbps(10))))
                             // new AnnotationConstraint("bandwidth", 10_000_000)))
-                            new AdvancedAnnotationConstraint("bandwidth", 10_000_000, false)))
+                            // new AdvancedAnnotationConstraint("bandwidth", 10_000_000, false)
+                            ))
                     .build();
-
-            //Link defaultLink = new DefaultLink.builder().annotations(DefaultAnnotations.builder()
-            // .set("LATENCY", "300")).build();
 
             intentService.submit(hostIntent);
         }
