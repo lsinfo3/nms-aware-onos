@@ -56,6 +56,7 @@ import org.slf4j.Logger;
 import java.util.EnumSet;
 import java.util.stream.Collectors;
 
+import static org.onlab.packet.Ethernet.TYPE_IPV4;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
