@@ -61,7 +61,7 @@ public final class EncodeConstraintCodecHelper {
         final LatencyConstraint latencyConstraint =
                 (LatencyConstraint) constraint;
         return context.mapper().createObjectNode()
-                .put("latencyMillis", latencyConstraint.latency().toMillis());
+                .put(ConstraintCodec.LATENCY_NANOS, latencyConstraint.latency().toNanos());
     }
 
     /**

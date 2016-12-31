@@ -119,11 +119,11 @@ public final class DecodeConstraintCodecHelper {
      * @return latency constraint object.
      */
     private Constraint decodeLatencyConstraint() {
-        long latencyMillis = nullIsIllegal(json.get(ConstraintCodec.LATENCY_MILLIS),
-                ConstraintCodec.LATENCY_MILLIS + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+        long latencyNanos = nullIsIllegal(json.get(ConstraintCodec.LATENCY_NANOS),
+                ConstraintCodec.LATENCY_NANOS + ConstraintCodec.MISSING_MEMBER_MESSAGE)
                 .asLong();
 
-        return new LatencyConstraint(Duration.ofMillis(latencyMillis));
+        return new LatencyConstraint(Duration.ofNanos(latencyNanos));
     }
 
     /**

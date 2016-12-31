@@ -37,7 +37,7 @@ public final class ConstraintCodec extends JsonCodec<Constraint> {
     protected static final String THRESHOLD = "threshold";
     protected static final String BANDWIDTH = "bandwidth";
     protected static final String LAMBDA = "lambda";
-    protected static final String LATENCY_MILLIS = "latencyMillis";
+    protected static final String LATENCY_NANOS = "latencyNanos";
     protected static final String OBSTACLES = "obstacles";
     protected static final String WAYPOINTS = "waypoints";
     protected static final String ISUPPERLIMIT = "isUpperLimit";
