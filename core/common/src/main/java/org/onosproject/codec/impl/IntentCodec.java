@@ -57,7 +57,8 @@ public final class IntentCodec extends JsonCodec<Intent> {
                 .put(TYPE, intent.getClass().getSimpleName())
                 .put(ID, intent.id().toString())
                 .put(APP_ID, UrlEscapers.urlPathSegmentEscaper()
-                        .escape(intent.appId().name()));
+                        .escape(intent.appId().name()))
+                .put(KEY, intent.key().toString());
 
         final ArrayNode jsonResources = result.putArray(RESOURCES);
 
