@@ -56,7 +56,6 @@ import org.slf4j.Logger;
 import java.util.EnumSet;
 import java.util.stream.Collectors;
 
-import static org.onlab.packet.Ethernet.TYPE_IPV4;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -221,10 +220,12 @@ public class IntentReactiveForwarding {
         Key key;
         if (srcId.toString().compareTo(dstId.toString()) < 0) {
             key = Key.of(srcId.toString() + dstId.toString() +
-                    selector.criteria().stream().sorted().collect(Collectors.toList()).toString(), appId);
+                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
+                            .collect(Collectors.toList()).toString(), appId);
         } else {
             key = Key.of(dstId.toString() + srcId.toString() +
-                    selector.criteria().stream().sorted().collect(Collectors.toList()).toString(), appId);
+                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
+                            .collect(Collectors.toList()).toString(), appId);
         }
 
         // FIXME distinguish intent keys taking the trafficSelector into account!
@@ -277,10 +278,10 @@ public class IntentReactiveForwarding {
                     .selector(selector)
                     .treatment(treatment)
                     .constraints(Lists.newArrayList(
-                            // new LatencyConstraint(Duration.ofNanos(1200)),
+                            // new LatencyConstraint(Duration.ofNanos(12000)),
                             // new BandwidthConstraint(Bandwidth.mbps(10))))
                             // new AnnotationConstraint("bandwidth", 10_000_000)))
-                            // new AdvancedAnnotationConstraint("bandwidth", 10_000_000, false)
+                            // new AdvancedAnnotationConstraint("bandwidth", 200_000, false)
                             ))
                     .build();
 
