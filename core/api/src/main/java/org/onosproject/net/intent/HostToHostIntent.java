@@ -28,6 +28,7 @@ import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.intent.constraint.LinkTypeConstraint;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -190,6 +191,27 @@ public final class HostToHostIntent extends ConnectivityIntent {
      */
     public HostId two() {
         return two;
+    }
+
+    /**
+     * Creates a Key containing both host ID's and the traffic selector criteria.
+     *
+     * @param hostOne the first host ID
+     * @param hostTwo the second host ID
+     * @param selector the traffic selector of the Intent
+     * @param appId the app ID creating the Key
+     * @return a Key
+     */
+    public static Key createSelectorKey(HostId hostOne, HostId hostTwo, TrafficSelector selector, ApplicationId appId) {
+        if (hostOne.toString().compareTo(hostTwo.toString()) < 0) {
+            return Key.of(hostOne.toString() + hostTwo.toString() +
+                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
+                            .collect(Collectors.toList()).toString(), appId);
+        } else {
+            return Key.of(hostTwo.toString() + hostOne.toString() +
+                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
+                            .collect(Collectors.toList()).toString(), appId);
+        }
     }
 
     @Override

@@ -54,7 +54,6 @@ import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 
 import java.util.EnumSet;
-import java.util.stream.Collectors;
 
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -217,16 +216,7 @@ public class IntentReactiveForwarding {
         TrafficSelector selector = matchIpProtoclPortTrafficSelector(context).build();
         TrafficTreatment treatment = DefaultTrafficTreatment.emptyTreatment();
 
-        Key key;
-        if (srcId.toString().compareTo(dstId.toString()) < 0) {
-            key = Key.of(srcId.toString() + dstId.toString() +
-                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
-                            .collect(Collectors.toList()).toString(), appId);
-        } else {
-            key = Key.of(dstId.toString() + srcId.toString() +
-                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
-                            .collect(Collectors.toList()).toString(), appId);
-        }
+        Key key = HostToHostIntent.createSelectorKey(srcId, dstId, selector, appId);
 
         // FIXME distinguish intent keys taking the trafficSelector into account!
         // problem: intents get installed twice, for src/dst host with same selector.
