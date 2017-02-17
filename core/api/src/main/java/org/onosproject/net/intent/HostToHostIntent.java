@@ -25,6 +25,9 @@ import org.onosproject.net.HostId;
 import org.onosproject.net.Link;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
+import org.onosproject.net.flow.criteria.Criterion;
+import org.onosproject.net.flow.criteria.TcpPortCriterion;
+import org.onosproject.net.flow.criteria.UdpPortCriterion;
 import org.onosproject.net.intent.constraint.LinkTypeConstraint;
 
 import java.util.List;
@@ -194,7 +197,8 @@ public final class HostToHostIntent extends ConnectivityIntent {
     }
 
     /**
-     * Creates a Key containing both host ID's and the traffic selector criteria.
+     * Creates a Key containing both host ID's and the traffic selector criteria concatenated as string.
+     * TP source and destination port are not differentiated as HostToHost intent does the calculation for both sides
      *
      * @param hostOne the first host ID
      * @param hostTwo the second host ID
@@ -204,13 +208,36 @@ public final class HostToHostIntent extends ConnectivityIntent {
      */
     public static Key createSelectorKey(HostId hostOne, HostId hostTwo, TrafficSelector selector, ApplicationId appId) {
         if (hostOne.toString().compareTo(hostTwo.toString()) < 0) {
-            return Key.of(hostOne.toString() + hostTwo.toString() +
-                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
-                            .collect(Collectors.toList()).toString(), appId);
+            return Key.of(hostOne.toString() + hostTwo.toString() + selectorKey(selector), appId);
         } else {
-            return Key.of(hostTwo.toString() + hostOne.toString() +
-                    selector.criteria().stream().sorted((c1, c2) -> c1.toString().compareTo(c2.toString()))
-                            .collect(Collectors.toList()).toString(), appId);
+            return Key.of(hostTwo.toString() + hostOne.toString() + selectorKey(selector), appId);
+        }
+    }
+
+    /**
+     * Create the selector key part.
+     * @param selector the traffic selector
+     * @return concatenated String of the traffic selector
+     */
+    private static String selectorKey(TrafficSelector selector) {
+        return selector.criteria().stream()
+                .map(c -> getCriterionValue(c))
+                .sorted((c1, c2) -> c1.compareTo(c2))
+                .collect(Collectors.toList()).toString();
+    }
+
+    /**
+     * Remove the tcp/udp src/dst types from the criterion string.
+     * @param criterion the traffic criterion
+     * @return a String
+     */
+    private static String getCriterionValue(Criterion criterion) {
+        switch (criterion.type()) {
+            case TCP_SRC: return ((TcpPortCriterion) criterion).tcpPort().toString();
+            case TCP_DST: return ((TcpPortCriterion) criterion).tcpPort().toString();
+            case UDP_SRC: return ((UdpPortCriterion) criterion).udpPort().toString();
+            case UDP_DST: return ((UdpPortCriterion) criterion).udpPort().toString();
+            default: return criterion.toString();
         }
     }
 

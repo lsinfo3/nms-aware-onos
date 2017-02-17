@@ -218,11 +218,6 @@ public class IntentReactiveForwarding {
 
         Key key = HostToHostIntent.createSelectorKey(srcId, dstId, selector, appId);
 
-        // FIXME distinguish intent keys taking the trafficSelector into account!
-        // problem: intents get installed twice, for src/dst host with same selector.
-        // -> resulting in four flows where only two match!
-        // Solution: compile intent right with src/dst tcp/udp TpPorts! ?
-
         // Check if HostToHostIntent has already been submitted
         HostToHostIntent intent = (HostToHostIntent) intentService.getIntent(key);
         // TODO handle the FAILED state

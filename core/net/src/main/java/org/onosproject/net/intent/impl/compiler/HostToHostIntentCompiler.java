@@ -127,7 +127,7 @@ public class HostToHostIntentCompiler
                 .priority(intent.priority())
                 .build();
     }
-    
+
     private void invertSelector(TrafficSelector.Builder selectorBuilder, HostToHostIntent intent) {
 
         // all criterions types defined for the intent selector
