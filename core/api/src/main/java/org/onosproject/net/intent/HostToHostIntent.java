@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableSet;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.net.HostId;
 import org.onosproject.net.Link;
+import org.onosproject.net.Path;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flow.criteria.Criterion;
@@ -45,6 +46,19 @@ public final class HostToHostIntent extends ConnectivityIntent {
 
     private final HostId one;
     private final HostId two;
+    // the paths where the traffic is routed on for this intent
+    private List<Path> paths;
+
+
+    public List<Path> getPaths() {
+        return paths;
+    }
+
+    public void setPaths(List<Path> paths) {
+        if(paths.size() == 2){
+            this.paths = paths;
+        }
+    }
 
     /**
      * Returns a new host to host intent builder.

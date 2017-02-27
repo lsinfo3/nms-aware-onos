@@ -493,7 +493,10 @@ public class ECLinkStore
             if (event.type() == PUT) {
                 linkProviders.compute(event.key().key(), (k, v) ->
                         createOrUpdateLinkProviders(v, event.key().providerId()));
-                notifyDelegate(refreshLinkCache(event.key().key()));
+                // notify delegeta only if the provider was not HostToHostIntentCompiler
+                if(!event.key().providerId().scheme().equals("h2h")){
+                    notifyDelegate(refreshLinkCache(event.key().key()));
+                }
             } else if (event.type() == REMOVE) {
                 notifyDelegate(purgeLinkCache(event.key().key()));
                 linkProviders.remove(event.key().key());
