@@ -168,7 +168,7 @@ public class IntentReactiveForwarding {
         OutboundPacket packet = new DefaultOutboundPacket(dst.location().deviceId(),
                                                           treatment, context.inPacket().unparsed());
         packetService.emit(packet);
-        log.info("sending packet: {}", packet);
+        log.debug("IntentReactiveForwarding - Forwarding Packet: {}", packet);
     }
 
     /**
