@@ -139,11 +139,13 @@ public class HostToHostIntentCompiler
      */
     private List<Link> getLinks(HostToHostIntent intent) {
         if (intent.getPaths() != null) {
-            // map path to list of links, map list of links to link and collect it to a list
+            // map path to list of links, map list of links to link,
+            // filter only non edge links and collect it to a list
             // contains all links the intent is routed on
             return intent.getPaths().stream()
                     .map(Path::links)
                     .flatMap(ls -> ls.stream())
+                    .filter(l -> l.type() != Link.Type.EDGE)
                     .collect(Collectors.toList());
         } else {
             return Lists.newArrayList();
