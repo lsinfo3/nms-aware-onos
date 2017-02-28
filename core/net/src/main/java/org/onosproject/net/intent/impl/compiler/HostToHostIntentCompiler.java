@@ -22,10 +22,13 @@ import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
-import org.onosproject.net.*;
+import org.onosproject.net.DefaultAnnotations;
+import org.onosproject.net.DefaultLink;
+import org.onosproject.net.DefaultPath;
+import org.onosproject.net.Host;
+import org.onosproject.net.Link;
+import org.onosproject.net.Path;
 import org.onosproject.net.device.DeviceService;
-import org.onosproject.net.flow.FlowEntry;
-import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.criteria.Criterion;
 import org.onosproject.net.flow.criteria.TcpPortCriterion;
@@ -42,19 +45,13 @@ import org.onosproject.net.link.DefaultLinkDescription;
 import org.onosproject.net.link.LinkDescription;
 import org.onosproject.net.link.LinkStore;
 import org.onosproject.net.provider.ProviderId;
-import org.onosproject.net.topology.Topology;
-import org.onosproject.net.topology.TopologyCluster;
-import org.onosproject.net.topology.TopologyService;
 
-import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.onosproject.net.flow.DefaultTrafficSelector.builder;
 
@@ -70,12 +67,6 @@ public class HostToHostIntentCompiler
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected DeviceService deviceService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected FlowRuleService flowRuleService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected TopologyService topologyService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected LinkStore linkStore;
@@ -97,6 +88,9 @@ public class HostToHostIntentCompiler
             return ImmutableList.of();
         }
 
+        // remove old link annotation values from the intents path
+        removeOldAnnotationValues(intent);
+
         boolean isAsymmetric = intent.constraints().contains(new AsymmetricPathConstraint());
         Path pathOne = getPath(intent, intent.one(), intent.two());
         Path pathTwo = isAsymmetric ?
@@ -105,62 +99,88 @@ public class HostToHostIntentCompiler
         Host one = hostService.getHost(intent.one());
         Host two = hostService.getHost(intent.two());
 
-        // remove old values of intent paths and set new ones for links of new paths
-        updateAnnotationValues(intent,
-                Stream.concat(pathOne.links().stream(), pathTwo.links().stream()).collect(Collectors.toList()));
-
         // update paths of intent
         intent.setPaths(Lists.newArrayList(pathOne, pathTwo));
+
+        // add intents constraint values as link annotation values to new path
+        addNewAnnotationValues(intent);
 
         return Arrays.asList(createPathIntent(pathOne, one, two, intent),
                              createPathIntent(pathTwo, two, one, intent));
     }
 
     /**
-     * Remove old values from old intent path and add them to the new ones
+     * Add constraint values of the intent to the link annotations.
      *
      * @param intent the intent to update values for
-     * @param newLinks the new links the intents traffic is routed on
      */
-    private void updateAnnotationValues(HostToHostIntent intent, List<Link> newLinks) {
-
-        List<Link> links = Lists.newArrayList();
-        if(intent.getPaths() != null) {
-            // map path to list of links, map list of links to link and collect it to a list
-            // contains all links the intent is routed on
-            links = intent.getPaths().stream()
-                    .map(Path::links)
-                    .flatMap(ls -> ls.stream())
-                    .collect(Collectors.toList());
-        }
-
-        // update values for links
-        removeOldValues(intent.constraints(), links);
-
+    private void addNewAnnotationValues(HostToHostIntent intent) {
+        List<Link> links = getLinks(intent);
+        // update annotation values of links
+        updateAnnotationValues(intent.constraints(), links, true);
     }
 
     /**
-     * Update link information in LinkManager
+     * Remove constraint values of the intent from the old paths annotations.
+     *
+     * @param intent the intent to update values for
+     */
+    private void removeOldAnnotationValues(HostToHostIntent intent) {
+        List<Link> links = getLinks(intent);
+        // update annotation values of links
+        updateAnnotationValues(intent.constraints(), links, false);
+    }
+
+    /**
+     * Compute a list of all links in the paths of the HostToHostIntent.
+     *
+     * @param intent the intent with the path
+     * @return List of links if paths are set, empty list otherwise
+     */
+    private List<Link> getLinks(HostToHostIntent intent) {
+        if (intent.getPaths() != null) {
+            // map path to list of links, map list of links to link and collect it to a list
+            // contains all links the intent is routed on
+            return intent.getPaths().stream()
+                    .map(Path::links)
+                    .flatMap(ls -> ls.stream())
+                    .collect(Collectors.toList());
+        } else {
+            return Lists.newArrayList();
+        }
+    }
+
+    /**
+     * Update link information in LinkManager.
      *
      * @param constraints the constraints the new link information is based on
      * @param links the links to update
+     * @param add boolean determining whether values are added to the links or removed
      */
-    private void removeOldValues(List<Constraint> constraints, List<Link> links) {
+    private void updateAnnotationValues(List<Constraint> constraints, List<Link> links, boolean add) {
 
         // update each link
-        for(Link link : links) {
-            // new annotation of link
+        for (Link link : links) {
+            // create new annotation for the link
             DefaultAnnotations.Builder newAnnotations = DefaultAnnotations.builder();
 
-            // iterrate through all annotations of the links
-            for(String annotationKey : link.annotations().keys()){
+            // iterrate through all existing annotations of the links
+            for (String annotationKey : link.annotations().keys()) {
 
                 String value = link.annotations().value(annotationKey);
 
                 // check if the link annotation is updated by the intent constraints
-                for(Constraint constraint : constraints){
-                    String newValue = checkConstraint(link.annotations().value(annotationKey), annotationKey, constraint);
-                    if(!newValue.isEmpty()){
+                for (Constraint constraint : constraints) {
+                    String newValue = "";
+                    if (add) {
+                        newValue = addConstraintValues(link.annotations().value(annotationKey),
+                                annotationKey, constraint);
+                    } else {
+                        newValue = removeConstraintValues(link.annotations().value(annotationKey),
+                                annotationKey, constraint);
+                    }
+                    // only update value if constraint key corresponds to annotation key
+                    if (!newValue.isEmpty()) {
                         value = newValue;
                     }
                 }
@@ -168,34 +188,74 @@ public class HostToHostIntentCompiler
                 newAnnotations.set(annotationKey, value);
 
             }
-            LinkDescription ld = new DefaultLinkDescription(link.src(), link.dst(), link.type(), link.isExpected(), newAnnotations.build());
-            // TODO: Do not trigger a TopologyUpdated event as no intent recompile is desired
+            LinkDescription ld = new DefaultLinkDescription(
+                    link.src(),
+                    link.dst(),
+                    link.type(),
+                    link.isExpected(),
+                    newAnnotations.build());
+            // Do not trigger a TopologyUpdated event as no intent recompile is desired
             linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
         }
     }
 
-
     /**
-     * Calculate the new value of the link annotation based on the intent constraint
+     * Calculate the new value of the link annotation based on the intent constraint.
      *
      * @param linkAnnotationValue the annotation value of the link
      * @param annotationKey the annotation key to check
      * @param constraint the intent constraint
      * @return new value of the link annotation
      */
-    private String checkConstraint(String linkAnnotationValue, String annotationKey, Constraint constraint) {
+    private String addConstraintValues(String linkAnnotationValue, String annotationKey, Constraint constraint) {
         // only annotationConstraint holds a key
-        if(constraint instanceof AnnotationConstraint) {
+        if (constraint instanceof AnnotationConstraint) {
             AnnotationConstraint annotationConstraint = (AnnotationConstraint) constraint;
-
             // check if the constraint and the link annotation match
-            if(annotationConstraint.key().equals(annotationKey)) {
+            if (annotationConstraint.key().equals(annotationKey)) {
 
                 if (annotationConstraint instanceof AdvancedAnnotationConstraint) {
                     AdvancedAnnotationConstraint advConstraint = (AdvancedAnnotationConstraint) annotationConstraint;
 
-                    // is upper limit? yes -> decrease annotation value
                     if (advConstraint.isUpperLimit()) {
+                        // is upper limit -> increase annotation value
+                        return String.valueOf(Double.valueOf(linkAnnotationValue) + advConstraint.threshold());
+                    } else {
+                        return String.valueOf(Double.valueOf(linkAnnotationValue) - advConstraint.threshold());
+                    }
+                } else {
+                    // AnnotationConstraint has always an upper limit -> increase annotation value
+                    return String.valueOf(Double.valueOf(linkAnnotationValue) + annotationConstraint.threshold());
+                }
+
+            }
+        }
+        // boolean constraint has no key, or keys do not match
+        return "";
+    }
+
+
+    /**
+     * Calculate the new value of the link annotation based on the intent constraint.
+     *
+     * @param linkAnnotationValue the annotation value of the link
+     * @param annotationKey the annotation key to check
+     * @param constraint the intent constraint
+     * @return new value of the link annotation
+     */
+    private String removeConstraintValues(String linkAnnotationValue, String annotationKey, Constraint constraint) {
+        // only annotationConstraint holds a key
+        if (constraint instanceof AnnotationConstraint) {
+            AnnotationConstraint annotationConstraint = (AnnotationConstraint) constraint;
+
+            // check if the constraint and the link annotation match
+            if (annotationConstraint.key().equals(annotationKey)) {
+
+                if (annotationConstraint instanceof AdvancedAnnotationConstraint) {
+                    AdvancedAnnotationConstraint advConstraint = (AdvancedAnnotationConstraint) annotationConstraint;
+
+                    if (advConstraint.isUpperLimit()) {
+                        // is upper limit -> decrease annotation value
                         return String.valueOf(Double.valueOf(linkAnnotationValue) - advConstraint.threshold());
                     } else {
                         return String.valueOf(Double.valueOf(linkAnnotationValue) + advConstraint.threshold());

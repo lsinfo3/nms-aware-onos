@@ -494,7 +494,7 @@ public class ECLinkStore
                 linkProviders.compute(event.key().key(), (k, v) ->
                         createOrUpdateLinkProviders(v, event.key().providerId()));
                 // notify delegeta only if the provider was not HostToHostIntentCompiler
-                if(!event.key().providerId().scheme().equals("h2h")){
+                if (!event.key().providerId().scheme().equals("h2h")) {
                     notifyDelegate(refreshLinkCache(event.key().key()));
                 }
             } else if (event.type() == REMOVE) {

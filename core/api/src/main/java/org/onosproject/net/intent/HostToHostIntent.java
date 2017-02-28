@@ -55,7 +55,7 @@ public final class HostToHostIntent extends ConnectivityIntent {
     }
 
     public void setPaths(List<Path> paths) {
-        if(paths.size() == 2){
+        if (paths.size() == 2) {
             this.paths = paths;
         }
     }
