@@ -97,6 +97,7 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
      */
     protected Path getPath(ConnectivityIntent intent,
                            ElementId one, ElementId two) {
+        // FIXME: does the path service use the updated links of HostToHostIntentCompiler
         Set<Path> paths = pathService.getPaths(one, two, weight(intent.constraints()));
         final List<Constraint> constraints = intent.constraints();
         ImmutableList<Path> filtered = FluentIterable.from(paths)

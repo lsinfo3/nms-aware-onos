@@ -81,8 +81,9 @@ public class HostToHostIntentCompiler
         intentManager.unregisterCompiler(HostToHostIntent.class);
     }
 
+    // make this method syncronized?
     @Override
-    public List<Intent> compile(HostToHostIntent intent, List<Intent> installable) {
+    public synchronized List<Intent> compile(HostToHostIntent intent, List<Intent> installable) {
         // If source and destination are the same, there are never any installables.
         if (Objects.equals(intent.one(), intent.two())) {
             return ImmutableList.of();
@@ -162,42 +163,46 @@ public class HostToHostIntentCompiler
     private void updateAnnotationValues(List<Constraint> constraints, List<Link> links, boolean add) {
 
         // update each link
-        for (Link link : links) {
+        for (Link intentLink : links) {
             // create new annotation for the link
             DefaultAnnotations.Builder newAnnotations = DefaultAnnotations.builder();
+            Link storeLink = linkStore.getLink(intentLink.src(), intentLink.dst());
 
-            // iterrate through all existing annotations of the links
-            for (String annotationKey : link.annotations().keys()) {
+            // if theres no link in store, do nothing
+            if (storeLink != null) {
+                // iterrate through all existing annotations of the links
+                for (String annotationKey : storeLink.annotations().keys()) {
 
-                String value = link.annotations().value(annotationKey);
+                    String value = storeLink.annotations().value(annotationKey);
 
-                // check if the link annotation is updated by the intent constraints
-                for (Constraint constraint : constraints) {
-                    String newValue = "";
-                    if (add) {
-                        newValue = addConstraintValues(link.annotations().value(annotationKey),
-                                annotationKey, constraint);
-                    } else {
-                        newValue = removeConstraintValues(link.annotations().value(annotationKey),
-                                annotationKey, constraint);
+                    // check if the link annotation is updated by the intent constraints
+                    for (Constraint constraint : constraints) {
+                        String newValue = "";
+                        if (add) {
+                            newValue = addConstraintValues(storeLink.annotations().value(annotationKey),
+                                    annotationKey, constraint);
+                        } else {
+                            newValue = removeConstraintValues(storeLink.annotations().value(annotationKey),
+                                    annotationKey, constraint);
+                        }
+                        // only update value if constraint key corresponds to annotation key
+                        if (!newValue.isEmpty()) {
+                            value = newValue;
+                        }
                     }
-                    // only update value if constraint key corresponds to annotation key
-                    if (!newValue.isEmpty()) {
-                        value = newValue;
-                    }
+
+                    newAnnotations.set(annotationKey, value);
+
                 }
-
-                newAnnotations.set(annotationKey, value);
-
+                LinkDescription ld = new DefaultLinkDescription(
+                        storeLink.src(),
+                        storeLink.dst(),
+                        storeLink.type(),
+                        storeLink.isExpected(),
+                        newAnnotations.build());
+                // Do not trigger a TopologyUpdated event as no intent recompile is desired
+                linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
             }
-            LinkDescription ld = new DefaultLinkDescription(
-                    link.src(),
-                    link.dst(),
-                    link.type(),
-                    link.isExpected(),
-                    newAnnotations.build());
-            // Do not trigger a TopologyUpdated event as no intent recompile is desired
-            linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
         }
     }
 
