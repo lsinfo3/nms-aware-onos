@@ -177,7 +177,7 @@ public class IntentReactiveForwarding {
      * @param context The packet context.
      * @return TrafficSelector.Builder
      */
-    private TrafficSelector.Builder matchIpProtoclPortTrafficSelector(PacketContext context) {
+    private TrafficSelector.Builder matchIpProtocolPortTrafficSelector(PacketContext context) {
         TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
 
         InboundPacket pkt = context.inPacket();
@@ -213,7 +213,7 @@ public class IntentReactiveForwarding {
     private void setUpConnectivity(PacketContext context, HostId srcId, HostId dstId) {
 
         // use tcp/udp src and dst from packet as selector
-        TrafficSelector selector = matchIpProtoclPortTrafficSelector(context).build();
+        TrafficSelector selector = matchIpProtocolPortTrafficSelector(context).build();
         TrafficTreatment treatment = DefaultTrafficTreatment.emptyTreatment();
 
         Key key = HostToHostIntent.createSelectorKey(srcId, dstId, selector, appId);
