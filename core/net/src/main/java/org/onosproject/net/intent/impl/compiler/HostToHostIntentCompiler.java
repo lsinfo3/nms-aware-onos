@@ -201,6 +201,8 @@ public class HostToHostIntentCompiler
                         storeLink.isExpected(),
                         newAnnotations.build());
                 // Do not trigger a TopologyUpdated event as no intent recompile is desired
+                // TODO: Is link realy updated here? Look for "link" map in "ECLinkStore"
+                // TODO: Look in "refreshLinkCache" method and there how the link and its annotations are composed.
                 linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
             }
         }

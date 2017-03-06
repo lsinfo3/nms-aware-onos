@@ -20,14 +20,18 @@ import com.google.common.collect.ImmutableList;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
+import org.onlab.osgi.DefaultServiceDirectory;
+import org.onlab.osgi.ServiceDirectory;
 import org.onosproject.net.DisjointPath;
 import org.onosproject.net.ElementId;
+import org.onosproject.net.Link;
 import org.onosproject.net.Path;
 import org.onosproject.net.intent.ConnectivityIntent;
 import org.onosproject.net.intent.Constraint;
 import org.onosproject.net.intent.IntentCompiler;
 import org.onosproject.net.intent.IntentExtensionService;
 import org.onosproject.net.intent.impl.PathNotFoundException;
+import org.onosproject.net.link.LinkStore;
 import org.onosproject.net.resource.ResourceQueryService;
 import org.onosproject.net.provider.ProviderId;
 import org.onosproject.net.topology.LinkWeight;
@@ -144,6 +148,8 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
 
         protected final List<Constraint> constraints;
 
+        private ServiceDirectory services = new DefaultServiceDirectory();
+
         /**
          * Creates a new edge-weight function capable of evaluating links
          * on the basis of the specified constraints.
@@ -170,7 +176,21 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             // FIXME: only returns the costs of the last constraint!
             double cost = it.next().cost(edge.link(), resourceService::isAvailable);
             while (it.hasNext() && cost > 0) {
-                cost = it.next().cost(edge.link(), resourceService::isAvailable);
+
+                // use provided link info for edge link
+                if (edge.link().type().equals(Link.Type.EDGE)) {
+                    cost = it.next().cost(edge.link(), resourceService::isAvailable);
+                } else {
+                    // get the link store TODO: move out of the while loop
+                    LinkStore linkStore = services.get(LinkStore.class);
+                    // use updated link info from store for direct link
+                    Link link = linkStore.getLink(edge.link().src(), edge.link().dst());
+                    if (link != null) {
+                        cost = it.next().cost(link, resourceService::isAvailable);
+                    } else {
+                        cost = it.next().cost(edge.link(), resourceService::isAvailable);
+                    }
+                }
                 if (cost < 0) {
                     return -1;
                 }
