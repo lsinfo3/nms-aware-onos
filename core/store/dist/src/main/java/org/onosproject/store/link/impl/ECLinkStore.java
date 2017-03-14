@@ -259,7 +259,8 @@ public class ECLinkStore
                 return null;
             }
             linkDescriptions.compute(internalLinkKey, (k, v) -> createOrUpdateLinkInternal(v, linkDescription));
-            return refreshLinkCache(linkKey);
+            LinkEvent linkEvent = refreshLinkCache(linkKey);
+            return linkEvent;
         } else {
             // Only forward for ConfigProvider
             // Forwarding was added as a workaround for ONOS-490
@@ -367,7 +368,6 @@ public class ECLinkStore
         ConnectPoint dst = base.dst();
         Type type = base.type();
         AtomicReference<DefaultAnnotations> annotations = new AtomicReference<>(DefaultAnnotations.builder().build());
-        annotations.set(merge(annotations.get(), base.annotations()));
 
         getAllProviders(linkKey).stream()
                 .map(p -> new Provided<>(linkKey, p))
@@ -378,6 +378,7 @@ public class ECLinkStore
                                               linkDescription.annotations()));
                     }
                 });
+        annotations.set(merge(annotations.get(), base.annotations())); //TODO: very strange things happen here?
 
         Link.State initialLinkState;
 
@@ -494,8 +495,9 @@ public class ECLinkStore
                 linkProviders.compute(event.key().key(), (k, v) ->
                         createOrUpdateLinkProviders(v, event.key().providerId()));
                 // notify delegeta only if the provider was not HostToHostIntentCompiler
+                LinkEvent linkEvent = refreshLinkCache(event.key().key());
                 if (!event.key().providerId().scheme().equals("h2h")) {
-                    notifyDelegate(refreshLinkCache(event.key().key()));
+                    notifyDelegate(linkEvent);
                 }
             } else if (event.type() == REMOVE) {
                 notifyDelegate(purgeLinkCache(event.key().key()));
