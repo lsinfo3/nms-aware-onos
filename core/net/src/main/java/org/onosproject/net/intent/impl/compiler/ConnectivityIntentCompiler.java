@@ -21,7 +21,6 @@ import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.onlab.osgi.DefaultServiceDirectory;
-import org.onlab.osgi.ServiceDirectory;
 import org.onosproject.net.DisjointPath;
 import org.onosproject.net.ElementId;
 import org.onosproject.net.Link;
@@ -147,8 +146,8 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
     protected class ConstraintBasedLinkWeight implements LinkWeight {
 
         protected final List<Constraint> constraints;
-
-        private ServiceDirectory services = new DefaultServiceDirectory();
+        // link store for up-to-date link information
+        private final LinkStore linkStore = new DefaultServiceDirectory().get(LinkStore.class);
 
         /**
          * Creates a new edge-weight function capable of evaluating links
@@ -177,12 +176,10 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             double cost = it.next().cost(edge.link(), resourceService::isAvailable);
             while (it.hasNext() && cost > 0) {
 
-                // use provided link info for edge link
-                if (edge.link().type().equals(Link.Type.EDGE)) {
+                if (edge.link().type().equals(Link.Type.EDGE) || linkStore == null) {
+                    // use provided link info for edge link
                     cost = it.next().cost(edge.link(), resourceService::isAvailable);
                 } else {
-                    // get the link store TODO: move out of the while loop
-                    LinkStore linkStore = services.get(LinkStore.class);
                     // use updated link info from store for direct link
                     Link link = linkStore.getLink(edge.link().src(), edge.link().dst());
                     if (link != null) {
