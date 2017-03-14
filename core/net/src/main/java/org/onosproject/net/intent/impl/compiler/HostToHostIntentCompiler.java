@@ -89,8 +89,13 @@ public class HostToHostIntentCompiler
             return ImmutableList.of();
         }
 
-        // remove old link annotation values from the intents path
-        removeOldAnnotationValues(intent);
+        boolean updatedOldPaths = true;
+        if (intent.getPaths() == null) {
+            updatedOldPaths = false;
+        } else {
+            // remove old link annotation values from the intents path
+            removeOldAnnotationValues(intent); //TODO: Do not update links which are no more in store!
+        }
 
         boolean isAsymmetric = intent.constraints().contains(new AsymmetricPathConstraint());
         Path pathOne = getPath(intent, intent.one(), intent.two());
@@ -103,8 +108,12 @@ public class HostToHostIntentCompiler
         // update paths of intent
         intent.setPaths(Lists.newArrayList(pathOne, pathTwo));
 
-        // add intents constraint values as link annotation values to new path
-        addNewAnnotationValues(intent);
+        // only update new paths if the annotations where removed from the old ones
+        // otherwise the network management system becomes unstable
+        if (updatedOldPaths) {
+            // add intents constraint values as link annotation values to new path
+            addNewAnnotationValues(intent);
+        }
 
         return Arrays.asList(createPathIntent(pathOne, one, two, intent),
                              createPathIntent(pathTwo, two, one, intent));
@@ -203,7 +212,9 @@ public class HostToHostIntentCompiler
                 // Do not trigger a TopologyUpdated event as no intent recompile is desired
                 // TODO: Is link realy updated here? Look for "link" map in "ECLinkStore"
                 // TODO: Look in "refreshLinkCache" method and there how the link and its annotations are composed.
-                linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
+                if (!storeLink.annotations().equals(ld.annotations())) {
+                    linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
+                }
             }
         }
     }
