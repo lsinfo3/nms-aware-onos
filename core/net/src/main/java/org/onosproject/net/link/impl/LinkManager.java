@@ -358,8 +358,8 @@ public class LinkManager
                             BasicLinkOperator.descriptionOf(lk.dst(), lk.src(), link));
             }
             // XXX think of sane way to fetch the LinkProvider
-            store.createOrUpdateLink(ProviderId.NONE, fldesc);
-            store.createOrUpdateLink(ProviderId.NONE, rldesc);
+            store.createOrUpdateLink(new ProviderId("cfg", "core.net.linkmanager"), fldesc);
+            store.createOrUpdateLink(new ProviderId("cfg", "core.net.linkmanager"), rldesc);
         }
 
     }

@@ -15,6 +15,7 @@
  */
 package org.onosproject.store.link.impl;
 
+import java.sql.Timestamp;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -71,7 +72,6 @@ import org.slf4j.Logger;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
 
 import static org.onosproject.net.DefaultAnnotations.merge;
@@ -117,7 +117,7 @@ public class ECLinkStore
     private final Logger log = getLogger(getClass());
 
     private final Map<LinkKey, Link> links = Maps.newConcurrentMap();
-    private final Map<LinkKey, Set<ProviderId>> linkProviders = Maps.newConcurrentMap();
+    private final Map<LinkKey, Map<ProviderId, Timestamp>> linkProviders = Maps.newConcurrentMap();
     private EventuallyConsistentMap<Provided<LinkKey>, LinkDescription> linkDescriptions;
 
 
@@ -305,11 +305,12 @@ public class ECLinkStore
         return updated;
     }
 
-    private Set<ProviderId> createOrUpdateLinkProviders(Set<ProviderId> current, ProviderId providerId) {
+    private Map<ProviderId, Timestamp> createOrUpdateLinkProviders(Map<ProviderId, Timestamp> current,
+                                                                   ProviderId providerId) {
         if (current == null) {
-            current = Sets.newConcurrentHashSet();
+            current = Maps.newConcurrentMap();
         }
-        current.add(providerId);
+        current.put(providerId, new Timestamp(System.currentTimeMillis()));
         return current;
     }
 
@@ -336,17 +337,19 @@ public class ECLinkStore
         return eventType.get() != null ? new LinkEvent(eventType.get(), link) : null;
     }
 
-    private Set<ProviderId> getAllProviders(LinkKey linkKey) {
-        return linkProviders.getOrDefault(linkKey, Sets.newConcurrentHashSet());
+    private Map<ProviderId, Timestamp> getAllProviders(LinkKey linkKey) {
+        return linkProviders.getOrDefault(linkKey, Maps.newConcurrentMap());
     }
 
+    // return the latest base provided instead a random one
     private ProviderId getBaseProviderId(LinkKey linkKey) {
-        Set<ProviderId> allProviders = getAllProviders(linkKey);
+        Map<ProviderId, Timestamp> allProviders = getAllProviders(linkKey);
         if (allProviders.size() > 0) {
-            return allProviders.stream()
-                    .filter(p -> !p.isAncillary())
-                    .findFirst()
-                    .orElse(Iterables.getFirst(allProviders, null));
+            return allProviders.entrySet().stream()
+                    .filter(e -> !e.getKey().isAncillary())
+                    .max((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
+                    .map(e -> e.getKey())
+                    .orElse(Iterables.getFirst(allProviders.keySet(), null));
         }
         return null;
     }
@@ -369,15 +372,16 @@ public class ECLinkStore
         Type type = base.type();
         AtomicReference<DefaultAnnotations> annotations = new AtomicReference<>(DefaultAnnotations.builder().build());
 
-        getAllProviders(linkKey).stream()
-                .map(p -> new Provided<>(linkKey, p))
+        getAllProviders(linkKey).entrySet().stream()
+                .sorted((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
+                .map(e -> new Provided<>(linkKey, e.getKey()))
                 .forEach(key -> {
                     LinkDescription linkDescription = linkDescriptions.get(key);
                     if (linkDescription != null) {
                         annotations.set(merge(annotations.get(),
                                               linkDescription.annotations()));
                     }
-                });
+                }); // TODO: link store ignores REST calls from other providers.. probably sort the link providers here?
         annotations.set(merge(annotations.get(), base.annotations())); //TODO: very strange things happen here?
 
         Link.State initialLinkState;
@@ -462,7 +466,7 @@ public class ECLinkStore
     private LinkEvent purgeLinkCache(LinkKey linkKey) {
         Link removedLink = links.remove(linkKey);
         if (removedLink != null) {
-            getAllProviders(linkKey).forEach(p -> linkDescriptions.remove(new Provided<>(linkKey, p)));
+            getAllProviders(linkKey).forEach((p, t) -> linkDescriptions.remove(new Provided<>(linkKey, p)));
             linkProviders.remove(linkKey);
             return new LinkEvent(LINK_REMOVED, removedLink);
         }
