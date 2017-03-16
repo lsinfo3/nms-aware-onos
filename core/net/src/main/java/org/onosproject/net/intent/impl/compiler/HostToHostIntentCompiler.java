@@ -239,13 +239,16 @@ public class HostToHostIntentCompiler
 
                     if (advConstraint.isUpperLimit()) {
                         // is upper limit -> increase annotation value
-                        return String.valueOf(Double.valueOf(linkAnnotationValue) + advConstraint.threshold());
+                        return String.valueOf(((Double) (Double.valueOf(linkAnnotationValue)
+                                + advConstraint.threshold())).intValue());
                     } else {
-                        return String.valueOf(Double.valueOf(linkAnnotationValue) - advConstraint.threshold());
+                        return String.valueOf(((Double) (Double.valueOf(linkAnnotationValue)
+                                - advConstraint.threshold())).intValue());
                     }
                 } else {
                     // AnnotationConstraint has always an upper limit -> increase annotation value
-                    return String.valueOf(Double.valueOf(linkAnnotationValue) + annotationConstraint.threshold());
+                    return String.valueOf(((Double) (Double.valueOf(linkAnnotationValue)
+                            + annotationConstraint.threshold())).intValue());
                 }
 
             }

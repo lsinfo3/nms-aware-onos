@@ -2,8 +2,10 @@ package org.onosproject.net.intent.constraint;
 
 import com.google.common.annotations.Beta;
 import com.google.common.base.MoreObjects;
+import org.onlab.osgi.DefaultServiceDirectory;
 import org.onosproject.net.Link;
 import org.onosproject.net.intent.ResourceContext;
+import org.onosproject.net.link.LinkStore;
 
 import java.util.Objects;
 
@@ -14,6 +16,9 @@ import static org.onosproject.net.AnnotationKeys.getAnnotatedValue;
  */
 @Beta
 public class AdvancedAnnotationConstraint extends AnnotationConstraint {
+
+    // link store for up-to-date link information
+    private final LinkStore linkStore = new DefaultServiceDirectory().get(LinkStore.class);
 
     private final boolean isUpperLimit;
 
@@ -42,7 +47,13 @@ public class AdvancedAnnotationConstraint extends AnnotationConstraint {
     @Override
     public boolean isValid(Link link, ResourceContext context) {
         // explicitly call a method not depending on LinkResourceService
-        return isValid(link);
+        Link updatedLink = linkStore.getLink(link.src(), link.dst());
+        if (updatedLink == null) {
+            return isValid(link);
+        } else {
+            return isValid(updatedLink);
+        }
+
     }
 
     private boolean isValid(Link link) {
