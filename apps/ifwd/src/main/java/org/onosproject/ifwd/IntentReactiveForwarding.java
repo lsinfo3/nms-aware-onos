@@ -195,9 +195,11 @@ public class IntentReactiveForwarding {
             if (ipv4Pkt.getProtocol() == IPv4.PROTOCOL_TCP) {
                 TCP tcpPkt = (TCP) ipv4Pkt.getPayload();
 
-                // match on the tcp src/dst port
-                selectorBuilder.matchTcpSrc(TpPort.tpPort(tcpPkt.getSourcePort()))
-                        .matchTcpDst(TpPort.tpPort(tcpPkt.getDestinationPort()));
+                if (tcpPkt.getSourcePort() != 22 && tcpPkt.getDestinationPort() != 22) {
+                    // match on the tcp src/dst port
+                    selectorBuilder.matchTcpSrc(TpPort.tpPort(tcpPkt.getSourcePort()))
+                            .matchTcpDst(TpPort.tpPort(tcpPkt.getDestinationPort()));
+                }
             } else if (ipv4Pkt.getProtocol() == IPv4.PROTOCOL_UDP) {
                 UDP udpPkt = (UDP) ipv4Pkt.getPayload();
 

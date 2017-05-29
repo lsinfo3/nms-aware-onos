@@ -81,7 +81,6 @@ public class HostToHostIntentCompiler
         intentManager.unregisterCompiler(HostToHostIntent.class);
     }
 
-    // make this method syncronized?
     @Override
     public synchronized List<Intent> compile(HostToHostIntent intent, List<Intent> installable) {
         // If source and destination are the same, there are never any installables.
@@ -94,7 +93,7 @@ public class HostToHostIntentCompiler
             updatedOldPaths = false;
         } else {
             // remove old link annotation values from the intents path
-            removeOldAnnotationValues(intent); //TODO: Do not update links which are no more in store!
+            removeOldAnnotationValues(intent);
         }
 
         boolean isAsymmetric = intent.constraints().contains(new AsymmetricPathConstraint());

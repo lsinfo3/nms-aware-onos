@@ -381,8 +381,8 @@ public class ECLinkStore
                         annotations.set(merge(annotations.get(),
                                               linkDescription.annotations()));
                     }
-                }); // TODO: link store ignores REST calls from other providers.. probably sort the link providers here?
-        annotations.set(merge(annotations.get(), base.annotations())); //TODO: very strange things happen here?
+                });
+        annotations.set(merge(annotations.get(), base.annotations()));
 
         Link.State initialLinkState;
 
