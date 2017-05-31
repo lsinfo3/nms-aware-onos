@@ -16,6 +16,7 @@
 package org.onosproject.ifwd;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
@@ -35,6 +36,7 @@ import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flow.DefaultTrafficTreatment;
+import org.onosproject.net.flow.criteria.Criterion;
 import org.onosproject.net.flowobjective.DefaultForwardingObjective;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.flowobjective.ForwardingObjective;
@@ -237,22 +239,36 @@ public class IntentReactiveForwarding {
                 intentService.submit(hostIntent);
             } else if (intentService.getIntentState(key) == IntentState.FAILED) {
 
-                TrafficSelector objectiveSelector = DefaultTrafficSelector.builder()
-                        .matchEthSrc(srcId.mac()).matchEthDst(dstId.mac()).build();
+                // only install drop rule, if the same intent is not pending
+                if (Sets.newHashSet(intentService.getPending()).stream()
+                        .map(i -> i.key())
+                        .noneMatch(k -> k.equals(key))) {
+                    log.warn("IntentReactiveForwarding: Intent with key {} failed. Install drop rule.", key.toString());
 
-                TrafficTreatment dropTreatment = DefaultTrafficTreatment.builder()
-                        .drop().build();
+                    TrafficSelector.Builder objectiveSelectorBuilder = DefaultTrafficSelector.builder()
+                            .matchEthSrc(srcId.mac()).matchEthDst(dstId.mac());
+                    for (Criterion criterion : selector.criteria()) {
+                        objectiveSelectorBuilder.add(criterion);
+                    }
+                    TrafficSelector objectiveSelector = objectiveSelectorBuilder.build();
 
-                ForwardingObjective objective = DefaultForwardingObjective.builder()
-                        .withSelector(objectiveSelector)
-                        .withTreatment(dropTreatment)
-                        .fromApp(appId)
-                        .withPriority(intent.priority() - 1)
-                        .makeTemporary(DROP_RULE_TIMEOUT)
-                        .withFlag(ForwardingObjective.Flag.VERSATILE)
-                        .add();
+                    TrafficTreatment dropTreatment = DefaultTrafficTreatment.builder()
+                            .drop().build();
 
-                flowObjectiveService.forward(context.outPacket().sendThrough(), objective);
+                    ForwardingObjective objective = DefaultForwardingObjective.builder()
+                            .withSelector(objectiveSelector)
+                            .withTreatment(dropTreatment)
+                            .fromApp(appId)
+                            .withPriority(intent.priority() - 1)
+                            .makeTemporary(DROP_RULE_TIMEOUT)
+                            .withFlag(ForwardingObjective.Flag.VERSATILE)
+                            .add();
+
+                    flowObjectiveService.forward(context.outPacket().sendThrough(), objective);
+                } else {
+                    log.warn("IntentReactiveForwarding: Intent with key {} failed. " +
+                            "No drop rule installed, as same intent is pending.", key.toString());
+                }
             }
 
         } else if (intent == null) {
