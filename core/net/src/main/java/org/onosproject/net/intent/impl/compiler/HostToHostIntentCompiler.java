@@ -241,8 +241,10 @@ public class HostToHostIntentCompiler
                         return String.valueOf(((Double) (Double.valueOf(linkAnnotationValue)
                                 + advConstraint.threshold())).intValue());
                     } else {
-                        return String.valueOf(((Double) (Double.valueOf(linkAnnotationValue)
-                                - advConstraint.threshold())).intValue());
+                        double result = ((Double) (Double.valueOf(linkAnnotationValue)
+                                - advConstraint.threshold())).intValue();
+                        // return only positive values
+                        return result > 0 ? String.valueOf(result) : "0";
                     }
                 } else {
                     // AnnotationConstraint has always an upper limit -> increase annotation value
@@ -278,14 +280,18 @@ public class HostToHostIntentCompiler
 
                     if (advConstraint.isUpperLimit()) {
                         // is upper limit -> decrease annotation value
-                        return String.valueOf(Double.valueOf(linkAnnotationValue) - advConstraint.threshold());
+                        double result = Double.valueOf(linkAnnotationValue) - advConstraint.threshold();
+                        // return only positive values
+                        return result > 0 ? String.valueOf(result) : "0";
                     } else {
                         return String.valueOf(Double.valueOf(linkAnnotationValue) + advConstraint.threshold());
                     }
 
                 } else {
                     // AnnotationConstraint has always an upper limit -> decrease annotation value
-                    return String.valueOf(Double.valueOf(linkAnnotationValue) - annotationConstraint.threshold());
+                    double result = Double.valueOf(linkAnnotationValue) - annotationConstraint.threshold();
+                    // return only positive values
+                    return result > 0 ? String.valueOf(result) : "0";
                 }
             }
         }
