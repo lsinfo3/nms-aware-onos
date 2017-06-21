@@ -43,8 +43,10 @@ import org.onosproject.net.intent.constraint.AnnotationConstraint;
 import org.onosproject.net.intent.constraint.AsymmetricPathConstraint;
 import org.onosproject.net.link.DefaultLinkDescription;
 import org.onosproject.net.link.LinkDescription;
+import org.onosproject.net.link.LinkEvent;
 import org.onosproject.net.link.LinkStore;
 import org.onosproject.net.provider.ProviderId;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -54,6 +56,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.onosproject.net.flow.DefaultTrafficSelector.builder;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * A intent compiler for {@link HostToHostIntent}.
@@ -61,6 +64,8 @@ import static org.onosproject.net.flow.DefaultTrafficSelector.builder;
 @Component(immediate = true)
 public class HostToHostIntentCompiler
         extends ConnectivityIntentCompiler<HostToHostIntent> {
+
+    private final Logger log = getLogger(getClass());
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected HostService hostService;
@@ -212,7 +217,27 @@ public class HostToHostIntentCompiler
                 // TODO: Is link realy updated here? Look for "link" map in "ECLinkStore"
                 // TODO: Look in "refreshLinkCache" method and there how the link and its annotations are composed.
                 if (!storeLink.annotations().equals(ld.annotations())) {
-                    linkStore.createOrUpdateLink(new ProviderId("h2h", "intentCompiler"), ld);
+
+                    boolean linkUpdated = false;
+
+                    // try 10 times to add the link description
+                    // FIXME: why is the link description not accepted by linkStore?
+                    for (int i = 1; i <= 10 && !linkUpdated; i++) {
+                        LinkEvent linkEvent = linkStore.createOrUpdateLink(
+                                new ProviderId("h2h", "intentCompiler"), ld);
+                        log.debug("H2HIntentCompiler: linkEvent={}", linkEvent);
+
+                        Link newLink = linkStore.getLink(ld.src(), ld.dst());
+                        if (newLink.annotations().equals(ld.annotations())) {
+                            log.debug("H2HIntentCompiler: Updated link annotations for link=(src={}, dst={})",
+                                    ld.src(), ld.dst());
+                            break;
+                        } else {
+                            log.warn("H2HIntentCompiler: Link annotations NOT updated! Link=(src={}, dst={})." +
+                                    " Trying again.", ld.src(), ld.dst());
+                        }
+
+                    }
                 }
             }
         }

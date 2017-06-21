@@ -245,7 +245,7 @@ public class ECLinkStore
     }
 
     @Override
-    public LinkEvent createOrUpdateLink(ProviderId providerId,
+    public synchronized LinkEvent createOrUpdateLink(ProviderId providerId,
                                         LinkDescription linkDescription) {
         final DeviceId dstDeviceId = linkDescription.dst().deviceId();
         final NodeId dstNodeId = mastershipService.getMasterFor(dstDeviceId);
@@ -259,6 +259,10 @@ public class ECLinkStore
                 return null;
             }
             linkDescriptions.compute(internalLinkKey, (k, v) -> createOrUpdateLinkInternal(v, linkDescription));
+            // this provider updated the link description, whether new information was added or not
+            // -> update link providers
+            linkProviders.compute(internalLinkKey.key(), (k, v) -> createOrUpdateLinkProviders(v, providerId));
+
             LinkEvent linkEvent = refreshLinkCache(linkKey);
             return linkEvent;
         } else {
@@ -295,12 +299,13 @@ public class ECLinkStore
     private LinkDescription createOrUpdateLinkInternal(LinkDescription current, LinkDescription updated) {
         if (current != null) {
             // we only allow transition from INDIRECT -> DIRECT
-            return new DefaultLinkDescription(
+            LinkDescription ld = new DefaultLinkDescription(
                     current.src(),
                     current.dst(),
                     current.type() == DIRECT ? DIRECT : updated.type(),
                     current.isExpected(),
                     union(current.annotations(), updated.annotations()));
+            return ld;
         }
         return updated;
     }
@@ -373,6 +378,19 @@ public class ECLinkStore
         AtomicReference<DefaultAnnotations> annotations = new AtomicReference<>(DefaultAnnotations.builder().build());
 
         getAllProviders(linkKey).entrySet().stream()
+                .filter(e -> e.getKey().scheme().equals("lldp"))
+                .map(e -> new Provided<>(linkKey, e.getKey()))
+                .findFirst()
+                .ifPresent(prov -> {
+                    LinkDescription linkDescription = linkDescriptions.get(prov);
+                    if (linkDescription != null) {
+                        annotations.set(merge(annotations.get(),
+                                linkDescription.annotations()));
+                    }
+                });
+
+        getAllProviders(linkKey).entrySet().stream()
+                .filter(e -> !e.getKey().scheme().equals("lldp"))
                 .sorted((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
                 .map(e -> new Provided<>(linkKey, e.getKey()))
                 .forEach(key -> {
@@ -382,7 +400,7 @@ public class ECLinkStore
                                               linkDescription.annotations()));
                     }
                 });
-        annotations.set(merge(annotations.get(), base.annotations()));
+        //annotations.set(merge(annotations.get(), base.annotations()));
 
         Link.State initialLinkState;
 
