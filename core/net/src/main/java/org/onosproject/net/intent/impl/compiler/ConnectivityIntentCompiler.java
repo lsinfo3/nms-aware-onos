@@ -23,25 +23,32 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.onlab.osgi.DefaultServiceDirectory;
 import org.onosproject.net.DisjointPath;
 import org.onosproject.net.ElementId;
+import org.onosproject.net.Host;
 import org.onosproject.net.Link;
 import org.onosproject.net.Path;
+import org.onosproject.net.flow.TrafficSelector;
+import org.onosproject.net.flow.criteria.Criterion;
+import org.onosproject.net.flow.criteria.IPProtocolCriterion;
+import org.onosproject.net.host.HostService;
 import org.onosproject.net.intent.ConnectivityIntent;
 import org.onosproject.net.intent.Constraint;
+import org.onosproject.net.intent.HostToHostIntent;
 import org.onosproject.net.intent.IntentCompiler;
 import org.onosproject.net.intent.IntentExtensionService;
 import org.onosproject.net.intent.impl.PathNotFoundException;
 import org.onosproject.net.link.LinkStore;
-import org.onosproject.net.resource.ResourceQueryService;
 import org.onosproject.net.provider.ProviderId;
+import org.onosproject.net.resource.ResourceQueryService;
 import org.onosproject.net.topology.LinkWeight;
 import org.onosproject.net.topology.PathService;
 import org.onosproject.net.topology.TopologyEdge;
 
 import java.util.Collections;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Base class for compilers of various
@@ -61,6 +68,9 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected ResourceQueryService resourceService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected HostService hostService;
 
     /**
      * Returns an edge-weight capable of evaluating links on the basis of the
@@ -89,6 +99,55 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
         return true;
     }
 
+    protected int getFiveTupleHash(ConnectivityIntent intent) {
+
+        Map<Short, Criterion.Type> ipProtoSrcMap = new HashMap<Short, Criterion.Type>();
+        ipProtoSrcMap.put((short) 6, Criterion.Type.TCP_SRC);
+        ipProtoSrcMap.put((short) 17, Criterion.Type.UDP_SRC);
+        ipProtoSrcMap.put((short) 132, Criterion.Type.SCTP_SRC);
+        Map<Short, Criterion.Type> ipProtoDstMap = new HashMap<Short, Criterion.Type>();
+        ipProtoDstMap.put((short) 6, Criterion.Type.TCP_DST);
+        ipProtoDstMap.put((short) 17, Criterion.Type.UDP_DST);
+        ipProtoDstMap.put((short) 132, Criterion.Type.SCTP_DST);
+
+        TrafficSelector selector = intent.selector();
+
+        int result = 0;
+
+        // create hash code based on ip addresses
+        if (intent.getClass().equals(HostToHostIntent.class)) {
+            HostToHostIntent h2hIntent = (HostToHostIntent) intent;
+            HostService hs = ((HostToHostIntentCompiler) this).hostService;
+            Host[] hosts = {hs.getHost(h2hIntent.one()), hs.getHost(h2hIntent.two())};
+
+            for (Host host : hosts) {
+                if (host != null) {
+                    result = 31 * result + (host.ipAddresses() != null ? host.ipAddresses().hashCode() : 0);
+                }
+            }
+        }
+
+        // ip protocol
+        result = 31 * result + (selector.getCriterion(Criterion.Type.IP_PROTO) != null ?
+                selector.getCriterion(Criterion.Type.IP_PROTO).hashCode() : 0);
+
+        if (selector.getCriterion(Criterion.Type.IP_PROTO) != null) {
+            IPProtocolCriterion ipProtoCrit = (IPProtocolCriterion) selector.getCriterion(Criterion.Type.IP_PROTO);
+            // protocol src port
+            if (ipProtoSrcMap.containsKey(ipProtoCrit.protocol())) {
+                result = 31 * result + (selector.getCriterion(ipProtoSrcMap.get(ipProtoCrit.protocol())) != null ?
+                        selector.getCriterion(ipProtoSrcMap.get(ipProtoCrit.protocol())).hashCode() : 0);
+            }
+            // protocol dst port
+            if (ipProtoDstMap.containsKey(ipProtoCrit.protocol())) {
+                result = 31 * result + (selector.getCriterion(ipProtoDstMap.get(ipProtoCrit.protocol())) != null ?
+                        selector.getCriterion(ipProtoDstMap.get(ipProtoCrit.protocol())).hashCode() : 0);
+            }
+        }
+
+        return result;
+    }
+
     /**
      * Computes a path between two ConnectPoints.
      *
@@ -109,9 +168,8 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             throw new PathNotFoundException(one, two);
         }
         // TODO: let's be more intelligent about this eventually
-        // shuffling filtered list for a better distribution of the packet flows
-        Random rand = new Random(System.nanoTime());
-        return filtered.get(rand.nextInt(filtered.size()));
+        // return the path based on the 5-tuple hash
+        return filtered.get(Math.floorMod(getFiveTupleHash(intent), filtered.size()));
     }
 
     /**
@@ -134,9 +192,8 @@ public abstract class ConnectivityIntentCompiler<T extends ConnectivityIntent>
             throw new PathNotFoundException(one, two);
         }
         // TODO: let's be more intelligent about this eventually
-        // shuffling filtered list for a better distribution of the packet flows
-        Random rand = new Random(System.nanoTime());
-        return filtered.get(rand.nextInt(filtered.size()));
+        // return the path based on the 5-tuple hash
+        return filtered.get(Math.floorMod(getFiveTupleHash(intent), filtered.size()));
     }
 
     /**
