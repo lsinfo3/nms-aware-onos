@@ -33,6 +33,7 @@ import com.google.common.net.UrlEscapers;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onlab.util.Tools.nullIsIllegal;
+import static org.onlab.util.Tools.nullIsNotFound;
 
 /**
  * Intent JSON codec.
@@ -48,6 +49,8 @@ public final class IntentCodec extends JsonCodec<Intent> {
     protected static final String RESOURCES = "resources";
     protected static final String MISSING_MEMBER_MESSAGE =
             " member is required in Intent";
+    private static final String E_APP_ID_NOT_FOUND =
+            "Application ID is not found";
 
     @Override
     public ObjectNode encode(Intent intent, CodecContext context) {
@@ -107,7 +110,7 @@ public final class IntentCodec extends JsonCodec<Intent> {
         String appId = nullIsIllegal(json.get(IntentCodec.APP_ID),
                 IntentCodec.APP_ID + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
         CoreService service = context.getService(CoreService.class);
-        builder.appId(service.getAppId(appId));
+        builder.appId(nullIsNotFound(service.getAppId(appId), IntentCodec.E_APP_ID_NOT_FOUND));
 
         JsonNode priorityJson = json.get(IntentCodec.PRIORITY);
         if (priorityJson != null) {
