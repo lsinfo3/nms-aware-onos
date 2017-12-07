@@ -6,6 +6,7 @@
     "priority",
     "timeout",
     "isPermanent",
+    "deviceId",
     "operation",
     "key",
     "conditions",
@@ -29,6 +30,10 @@
     "isPermanent": {
       "type": "boolean",
       "example": true
+    },
+    "deviceId": {
+      "type": "string",
+      "example": "of:0000000000000001"
     },
     "operation": {
       "type": "string",

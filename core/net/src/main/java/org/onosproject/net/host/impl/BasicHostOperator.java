@@ -64,7 +64,7 @@ public final class BasicHostOperator implements ConfigOperator {
 
         SparseAnnotations sa = combine(cfg, descr.annotations());
         return new DefaultHostDescription(descr.hwAddress(), descr.vlan(),
-                                          location, ipAddresses, descr.configured(), sa);
+                                          location, ipAddresses, sa);
     }
 
     /**

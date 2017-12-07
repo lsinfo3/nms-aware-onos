@@ -22,21 +22,28 @@ import java.util.Objects;
 /**
  * Default implementation of {@link GroupId}.
  */
-@Deprecated
-public class DefaultGroupId extends GroupId {
+// TODO: require refactor to extend from Identifier base class
+public class DefaultGroupId implements GroupId {
+
+    private final int id;
 
     public DefaultGroupId(int id) {
-        super(id);
+        this.id = id;
     }
 
     // Constructor for serialization
     private DefaultGroupId() {
-        super(0);
+        this.id = 0;
+    }
+
+    @Override
+    public int id() {
+        return this.id;
     }
 
     @Override
     public int hashCode() {
-        return identifier;
+        return id;
     }
 
     @Override
@@ -48,13 +55,13 @@ public class DefaultGroupId extends GroupId {
             return false;
         }
         final DefaultGroupId other = (DefaultGroupId) obj;
-        return Objects.equals(this.identifier, other.identifier);
+        return Objects.equals(this.id, other.id);
     }
 
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                .add("id", "0x" + Integer.toHexString(identifier))
+                .add("id", "0x" + Integer.toHexString(id))
                 .toString();
     }
 }

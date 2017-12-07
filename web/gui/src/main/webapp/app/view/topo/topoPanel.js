@@ -264,7 +264,7 @@
             table = detail.appendBody('table'),
             tbody = table.append('tbody');
 
-        title.text('Selected Items');
+        title.text('Selected Nodes');
         ids.forEach(function (d, i) {
             addProp(tbody, i+1, d);
         });

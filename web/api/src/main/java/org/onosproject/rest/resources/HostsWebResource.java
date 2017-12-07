@@ -214,7 +214,7 @@ public class HostsWebResource extends AbstractWebResource {
             // Update host inventory
 
             HostId hostId = HostId.hostId(mac, vlanId);
-            DefaultHostDescription desc = new DefaultHostDescription(mac, vlanId, hostLocation, ips, true, annotations);
+            DefaultHostDescription desc = new DefaultHostDescription(mac, vlanId, hostLocation, ips, annotations);
             hostProviderService.hostDetected(hostId, desc, false);
             return hostId;
         }

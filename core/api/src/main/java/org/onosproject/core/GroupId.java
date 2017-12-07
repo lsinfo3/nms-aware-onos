@@ -15,39 +15,18 @@
  */
 package org.onosproject.core;
 
-import com.google.common.base.MoreObjects;
-import org.onlab.util.Identifier;
-
 /**
  * Group identifier.
  */
-public class GroupId extends Identifier<Integer> {
-
-    public GroupId(int id) {
-        super(id);
-    }
-
-    // Constructor for serialization
-    private GroupId() {
-        super(0);
-    }
+// TODO: require refactor to extend from Identifier base class
+public interface GroupId {
 
     /**
      * Returns a group ID as an integer value.
      * The method is not intended for use by application developers.
      * Return data type may change in the future release.
      *
-     * @param id int value
-     * @return group ID
+     * @return a group ID as integer value
      */
-    public static GroupId valueOf(int id) {
-        return new GroupId(id);
-    }
-
-    @Override
-    public String toString() {
-        return MoreObjects.toStringHelper(this)
-                .add("id", "0x" + Integer.toHexString(identifier))
-                .toString();
-    }
+    int id();
 }

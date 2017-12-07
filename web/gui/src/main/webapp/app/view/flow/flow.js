@@ -65,14 +65,6 @@
                 $scope.brief = !$scope.brief;
             };
 
-            Object.defineProperty($scope, "queryFilter", {
-               get: function() {
-                   var out = {};
-                   out[$scope.queryBy || "$"] = $scope.queryTxt;
-                   return out;
-               }
-            });
-
             $log.log('OvFlowCtrl has been created');
         }]);
 }());

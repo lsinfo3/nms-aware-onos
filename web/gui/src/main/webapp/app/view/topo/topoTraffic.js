@@ -75,10 +75,8 @@
         var hov = api.hovered();
 
         function hoverValid() {
-            return hoverMode === 'intents' && hov && (
-            hov.class === 'host' ||
-            hov.class === 'device' ||
-            hov.class === 'link');
+            return hoverMode === 'intents' &&
+                hov && (hov.class === 'host' || hov.class === 'device');
         }
 
         if (api.somethingSelected()) {

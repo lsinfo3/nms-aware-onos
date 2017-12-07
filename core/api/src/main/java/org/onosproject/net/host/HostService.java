@@ -23,7 +23,6 @@ import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.Host;
 import org.onosproject.net.HostId;
-import org.onosproject.store.Timestamp;
 
 import java.util.Set;
 
@@ -124,13 +123,4 @@ public interface HostService
      */
     void requestMac(IpAddress ip);
 
-    /**
-     * Returns the recent host updated time.
-     *
-     * @param hostId host identifier
-     * @return recent host updated time
-     */
-    default Timestamp getHostLastseenTime(HostId hostId) {
-        return null;
-    }
 }
