@@ -31,7 +31,7 @@
         network,
         showPorts = true,       // enable port highlighting by default
         enhancedLink = null,    // the link over which the mouse is hovering
-        selectedLink = null;    // the link which is currently selected
+        selectedLinks = {};     // the links which are already selected
 
     // SVG elements;
     var svg;
@@ -117,20 +117,24 @@
             minDist = proximity * 2;
 
             network.links.forEach(function (d) {
+                var line = d.position,
+                    point,
+                    hit,
+                    dist;
+
                 if (!api.showHosts() && d.type() === 'hostLink') {
                     return; // skip hidden host links
                 }
 
-                var line = d.position,
-                    point = pdrop(line, mouse),
-                    hit = lineHit(line, point, mouse),
-                    dist;
-
-                if (hit) {
-                    dist = mdist(point, mouse);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        nearest = d;
+                if (line) {
+                    point = pdrop(line, mouse);
+                    hit = lineHit(line, point, mouse);
+                    if (hit) {
+                        dist = mdist(point, mouse);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearest = d;
+                        }
                     }
                 }
             });
@@ -210,25 +214,32 @@
 
     function selectLink(ldata) {
         // if the new link is same as old link, do nothing
-        if (selectedLink && ldata && selectedLink.key === ldata.key) return;
+         if (d3.event.shiftKey && ldata.el.classed('selected')) {
+            unselLink(ldata);
+            return;
+         }
 
-        // make sure no nodes are selected
-        tss.deselectAll();
+         if (d3.event.shiftKey && !ldata.el.classed('selected')) {
+            selLink(ldata);
+            return;
+         }
 
-        // first, unenhance the currently enhanced link
-        if (selectedLink) {
-            unselLink(selectedLink);
-        }
-        selectedLink = ldata;
-        if (selectedLink) {
-            selLink(selectedLink);
-        }
+         tss.deselectAll();
+
+         if (ldata) {
+            if (!ldata.el.classed('selected')) {
+                selLink(ldata);
+            } else {
+                unselLink(ldata);
+            }
+         }
     }
 
     function unselLink(d) {
         // guard against link element not set
         if (d.el) {
             d.el.classed('selected', false);
+            delete selectedLinks[d.key];
         }
     }
 
@@ -237,6 +248,7 @@
         if (!d.el) return;
 
         d.el.classed('selected', true);
+        selectedLinks[d.key] = {key : d};
 
         tps.displayLink(d, tov.hooks.modifyLinkData);
         tps.displaySomething();
@@ -252,6 +264,9 @@
 
     function mouseClickHandler() {
         var mp, link, node;
+        if (!d3.event.shiftKey) {
+            deselectAllLinks();
+        }
 
         if (!tss.clickConsumed()) {
             mp = getLogicalMousePosition(this);
@@ -262,6 +277,7 @@
             } else {
                 link = computeNearestLink(mp);
                 selectLink(link);
+                tss.selectObject(link);
             }
         }
     }
@@ -285,13 +301,15 @@
         return on;
     }
 
-    function deselectLink() {
-        if (selectedLink) {
-            unselLink(selectedLink);
-            selectedLink = null;
-            return true;
+    function deselectAllLinks() {
+
+        if (Object.keys(selectedLinks).length > 0) {
+            network.links.forEach(function (d) {
+                if (selectedLinks[d.key]) {
+                    unselLink(d);
+                }
+            });
         }
-        return false;
     }
 
     // ==========================
@@ -333,7 +351,7 @@
                 initLink: initLink,
                 destroyLink: destroyLink,
                 togglePorts: togglePorts,
-                deselectLink: deselectLink
+                deselectAllLinks: deselectAllLinks
             };
         }]);
 }());
