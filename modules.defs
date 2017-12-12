@@ -151,6 +151,7 @@ ONOS_APPS = [
     '//apps/xosclient:onos-apps-xosclient-oar',
     '//apps/scalablegateway:onos-apps-scalablegateway-oar',
     '//apps/patchpanel:onos-apps-patchpanel-oar',
+    '//apps/ifwd:onos-apps-ifwd-oar',
 ]
 
 APP_JARS = [
