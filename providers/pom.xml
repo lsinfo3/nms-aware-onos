@@ -22,7 +22,7 @@
     <parent>
         <groupId>org.onosproject</groupId>
         <artifactId>onos</artifactId>
-        <version>1.7.2-SNAPSHOT</version>
+        <version>1.7.0</version>
     </parent>
 
     <artifactId>onos-providers</artifactId>
@@ -50,7 +50,6 @@
         <module>lisp</module>
         <module>ospf</module>
         <module>link</module>
-        <module>ietfte</module>
     </modules>
 
     <dependencies>

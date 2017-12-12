@@ -19,7 +19,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.onosproject.net.DeviceId;
-import org.onosproject.net.device.DeviceService;
 import org.onosproject.net.meter.DefaultMeterRequest;
 import org.onosproject.net.meter.Meter;
 import org.onosproject.net.meter.MeterId;
@@ -141,17 +140,12 @@ public class MetersWebResource extends AbstractWebResource {
             ObjectNode jsonTree = (ObjectNode) mapper().readTree(stream);
             JsonNode specifiedDeviceId = jsonTree.get("deviceId");
 
-            if ((specifiedDeviceId != null &&
-                    !specifiedDeviceId.asText().equals(deviceId)) ||
-                    get(DeviceService.class).getDevice(DeviceId.deviceId(deviceId))
-                            == null) {
+            if (specifiedDeviceId != null &&
+                    !specifiedDeviceId.asText().equals(deviceId)) {
                 throw new IllegalArgumentException(DEVICE_INVALID);
             }
-
             jsonTree.put("deviceId", deviceId);
-            final MeterRequest meterRequest = codec(MeterRequest.class)
-                    .decode(jsonTree, this);
-
+            final MeterRequest meterRequest = codec(MeterRequest.class).decode(jsonTree, this);
             final Meter meter = meterService.submit(meterRequest);
 
             UriBuilder locationBuilder = uriInfo.getBaseUriBuilder()

@@ -107,7 +107,6 @@ public class OpenFlowControlMessageProvider extends AbstractProvider
 
     @Deactivate
     protected void deactivate() {
-        disconnectDevices();
         controller.removeListener(listener);
         providerRegistry.unregister(this);
         providerService = null;
@@ -124,17 +123,6 @@ public class OpenFlowControlMessageProvider extends AbstractProvider
                 listener.switchAdded(new Dpid(sw.getId()));
             } catch (Exception e) {
                 log.warn("Failed initially adding {} : {}", sw.getStringId(), e.getMessage());
-                log.debug("Error details:", e);
-            }
-        }
-    }
-
-    private void disconnectDevices() {
-        for (OpenFlowSwitch sw: controller.getSwitches()) {
-            try {
-                listener.switchRemoved(new Dpid(sw.getId()));
-            } catch (Exception e) {
-                log.warn("Failed to remove {} : {}", sw.getStringId(), e.getMessage());
                 log.debug("Error details:", e);
             }
         }

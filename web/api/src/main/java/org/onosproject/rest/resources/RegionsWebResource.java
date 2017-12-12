@@ -193,13 +193,11 @@ public class RegionsWebResource extends AbstractWebResource {
     @Produces(MediaType.APPLICATION_JSON)
     public Response addDevices(@PathParam("regionId") String regionId,
                                InputStream stream) {
-        RegionId rid = RegionId.regionId(regionId);
-        Region region = nullIsNotFound(regionService.getRegion(rid),
-                REGION_NOT_FOUND + rid);
+        final RegionId rid = RegionId.regionId(regionId);
 
         URI location;
         try {
-            regionAdminService.addDevices(region.id(), extractDeviceIds(stream));
+            regionAdminService.addDevices(rid, extractDeviceIds(stream));
             location = new URI(rid.id());
         } catch (IOException | URISyntaxException e) {
             throw new IllegalArgumentException(e);
@@ -221,9 +219,7 @@ public class RegionsWebResource extends AbstractWebResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response removeDevices(@PathParam("regionId") String regionId,
                                   InputStream stream) {
-        RegionId rid = RegionId.regionId(regionId);
-        Region region = nullIsNotFound(regionService.getRegion(rid),
-                REGION_NOT_FOUND + rid);
+        final RegionId rid = RegionId.regionId(regionId);
 
         try {
             regionAdminService.removeDevices(rid, extractDeviceIds(stream));

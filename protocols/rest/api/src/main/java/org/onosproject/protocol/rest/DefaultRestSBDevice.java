@@ -16,16 +16,15 @@
 
 package org.onosproject.protocol.rest;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.Objects;
-
+import com.google.common.base.MoreObjects;
+import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.StringUtils;
 import org.onlab.packet.IpAddress;
 import org.onosproject.net.DeviceId;
 
-import com.google.common.base.MoreObjects;
-import com.google.common.base.Preconditions;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Objects;
 
 /**
  * Default implementation for Rest devices.

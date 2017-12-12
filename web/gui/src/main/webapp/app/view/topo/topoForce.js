@@ -971,7 +971,7 @@
             node: function () { return node; },
             zoomingOrPanning: zoomingOrPanning,
             updateDeviceColors: td3.updateDeviceColors,
-            deselectAllLinks: tls.deselectAllLinks
+            deselectLink: tls.deselectLink
         };
     }
 

@@ -35,11 +35,8 @@ import org.onosproject.codec.CodecService;
 import org.onosproject.codec.impl.CodecManager;
 import org.onosproject.mastership.MastershipAdminService;
 import org.onosproject.mastership.MastershipService;
-import org.onosproject.net.DefaultDevice;
-import org.onosproject.net.Device;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.MastershipRole;
-import org.onosproject.net.device.DeviceService;
 
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
@@ -67,7 +64,6 @@ import static org.onosproject.net.MastershipRole.MASTER;
 public final class MastershipResourceTest extends ResourceTest {
 
     private final MastershipService mockService = createMock(MastershipService.class);
-    private final DeviceService mockDeviceService = createMock(DeviceService.class);
     private final MastershipAdminService mockAdminService =
                   createMock(MastershipAdminService.class);
 
@@ -75,8 +71,6 @@ public final class MastershipResourceTest extends ResourceTest {
     private final DeviceId deviceId2 = DeviceId.deviceId("dev:2");
     private final DeviceId deviceId3 = DeviceId.deviceId("dev:3");
 
-    final Device device1 = new DefaultDevice(null, deviceId1, Device.Type.OTHER,
-            "", "", "", "", null);
     private final NodeId nodeId1 = NodeId.nodeId("node:1");
     private final NodeId nodeId2 = NodeId.nodeId("node:2");
     private final NodeId nodeId3 = NodeId.nodeId("node:3");
@@ -167,7 +161,6 @@ public final class MastershipResourceTest extends ResourceTest {
                 new TestServiceDirectory()
                         .add(MastershipService.class, mockService)
                         .add(MastershipAdminService.class, mockAdminService)
-                        .add(DeviceService.class, mockDeviceService)
                         .add(CodecService.class, codecService);
 
         BaseResource.setServiceDirectory(testDirectory);
@@ -293,9 +286,6 @@ public final class MastershipResourceTest extends ResourceTest {
     public void testRequestRoleFor() {
         expect(mockService.requestRoleForSync(anyObject())).andReturn(role1).anyTimes();
         replay(mockService);
-
-        expect(mockDeviceService.getDevice(deviceId1)).andReturn(device1);
-        replay(mockDeviceService);
 
         final WebTarget wt = target();
         final String response = wt.path("mastership/" + deviceId1.toString() +

@@ -1,3 +1,8 @@
+SRC = 'src/main/java/org/onlab/junit/'
+TEST = 'src/test/java/org/onlab/junit/'
+CURRENT_NAME = 'onlab-junit'
+CURRENT_TARGET = ':' + CURRENT_NAME
+
 SRC_DEPS = [
     '//lib:junit',
     '//lib:hamcrest-all',
@@ -8,13 +13,20 @@ TEST_DEPS = [
     '//lib:guava-testlib',
 ]
 
-osgi_jar_with_tests(
-    name = 'onlab-junit',
+osgi_jar(
+    name = CURRENT_NAME,
     srcs = glob([SRC + '/*.java']),
     deps = SRC_DEPS,
-    test_deps = TEST_DEPS,
     visibility = ['PUBLIC'],
     resources_root = 'src/main/resources',
     resources = glob(['src/main/resources/**']),
     package_name_root = 'org.onlab',
+)
+
+java_test(
+    name = 'tests',
+    srcs = glob([TEST + '/*.java']),
+    deps = SRC_DEPS +
+           TEST_DEPS +
+           [CURRENT_TARGET],
 )

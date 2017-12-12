@@ -135,7 +135,7 @@ public class IGMP extends BasePacket {
                 break;
 
             case TYPE_IGMPV3_MEMBERSHIP_REPORT:
-                if (group instanceof IGMPQuery) {
+                if (group instanceof IGMPMembership) {
                     return false;
                 }
                 break;

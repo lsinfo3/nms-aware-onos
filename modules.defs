@@ -1,16 +1,10 @@
-UTILS = [
+CORE = [
     '//utils/osgi:onlab-osgi',
     '//utils/junit:onlab-junit',
     '//utils/misc:onlab-misc',
     '//utils/rest:onlab-rest',
-]
 
-API = [
     '//core/api:onos-api',
-    '//incubator/api:onos-incubator-api',
-]
-
-CORE = UTILS + API + [
     '//core/net:onos-core-net',
     '//core/common:onos-core-common',
     '//core/store/primitives:onos-core-primitives',
@@ -19,6 +13,7 @@ CORE = UTILS + API + [
     '//core/security:onos-security',
     '//core/store/persistence:onos-core-persistence',
 
+    '//incubator/api:onos-incubator-api',
     '//incubator/net:onos-incubator-net',
     '//incubator/core:onos-incubator-core',
     '//incubator/store:onos-incubator-store',
@@ -73,8 +68,7 @@ ONOS_DRIVERS = [
     # Drivers
     '//drivers/default:onos-drivers-default-oar',
     '//drivers/arista:onos-drivers-arista-oar',
-    # TODO ONOS-5554 excluding from the build
-    #'//drivers/bti:onos-drivers-bti-oar',
+    '//drivers/bti:onos-drivers-bti-oar',
     '//drivers/ciena:onos-drivers-ciena-oar',
     '//drivers/cisco:onos-drivers-cisco-oar',
     '//drivers/corsa:onos-drivers-corsa-oar',
