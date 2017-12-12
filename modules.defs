@@ -167,6 +167,7 @@ ONOS_APPS = [
     '//apps/patchpanel:onos-apps-patchpanel-oar',
     '//apps/castor:onos-apps-castor-oar',
     '//apps/yms:onos-apps-yms-oar',
+    '//apps/ifwd:onos-apps-ifwd-oar',
 ]
 
 APP_JARS = [
