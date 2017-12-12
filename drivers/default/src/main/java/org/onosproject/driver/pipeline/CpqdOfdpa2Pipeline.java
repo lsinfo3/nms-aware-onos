@@ -238,8 +238,8 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
     }
 
     /*
-     * Cpqd emulation does not require the non-OF standard rules for
-     * matching untagged packets.
+     * Cpqd emulation does not require the non OF-standard rules for
+     * matching untagged packets that ofdpa uses.
      *
      * (non-Javadoc)
      * @see org.onosproject.driver.pipeline.OFDPA2Pipeline#processVlanIdFilter
@@ -447,10 +447,6 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
         TrafficSelector.Builder filteredSelector = DefaultTrafficSelector.builder();
         TrafficSelector.Builder complementarySelector = DefaultTrafficSelector.builder();
 
-        /*
-         * NOTE: The switch does not support matching 0.0.0.0/0.
-         * Split it into 0.0.0.0/1 and 128.0.0.0/1
-         */
         if (ethType.ethType().toShort() == Ethernet.TYPE_IPV4) {
             IpPrefix ipv4Dst = ((IPCriterion) selector.getCriterion(Criterion.Type.IPV4_DST)).ip();
             if (ipv4Dst.isMulticast()) {
@@ -471,14 +467,11 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
                 log.debug("processing IPv4 multicast specific forwarding objective {} -> next:{}"
                         + " in dev:{}", fwd.id(), fwd.nextId(), deviceId);
             } else {
-                if (ipv4Dst.prefixLength() > 0) {
-                    filteredSelector.matchEthType(Ethernet.TYPE_IPV4).matchIPDst(ipv4Dst);
+                if (ipv4Dst.prefixLength() == 0) {
+                    // The entire IPV4_DST field is wildcarded intentionally
+                    filteredSelector.matchEthType(Ethernet.TYPE_IPV4);
                 } else {
-                    filteredSelector.matchEthType(Ethernet.TYPE_IPV4)
-                            .matchIPDst(IpPrefix.valueOf("0.0.0.0/1"));
-                    complementarySelector.matchEthType(Ethernet.TYPE_IPV4)
-                            .matchIPDst(IpPrefix.valueOf("128.0.0.0/1"));
-                    defaultRule = true;
+                    filteredSelector.matchEthType(Ethernet.TYPE_IPV4).matchIPDst(ipv4Dst);
                 }
                 forTableId = UNICAST_ROUTING_TABLE;
                 log.debug("processing IPv4 unicast specific forwarding objective {} -> next:{}"
@@ -517,7 +510,8 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
                 // we only need the top level group's key to point the flow to it
                 Group group = groupService.getGroup(deviceId, gkeys.get(0).peekFirst());
                 if (group == null) {
-                    log.warn("The group left!");
+                    log.warn("Group with key:{} for next-id:{} not found in dev:{}",
+                             gkeys.get(0).peekFirst(), fwd.nextId(), deviceId);
                     fail(fwd, ObjectiveError.GROUPMISSING);
                     return Collections.emptySet();
                 }
@@ -556,7 +550,6 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
             flowRuleCollection.add(rule.build());
             log.debug("Default rule 0.0.0.0/0 is being installed two rules");
         }
-
         return flowRuleCollection;
     }
 
@@ -764,8 +757,6 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
         FlowRuleOperations.Builder ops = FlowRuleOperations.builder();
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder();
-        selector = DefaultTrafficSelector.builder();
-        treatment = DefaultTrafficTreatment.builder();
         treatment.transition(BRIDGING_TABLE);
         FlowRule rule = DefaultFlowRule.builder()
                 .forDevice(deviceId)
@@ -892,8 +883,6 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
         FlowRuleOperations.Builder ops = FlowRuleOperations.builder();
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder();
-        selector = DefaultTrafficSelector.builder();
-        treatment = DefaultTrafficTreatment.builder();
         treatment.transition(ACL_TABLE);
         FlowRule rule = DefaultFlowRule.builder()
                 .forDevice(deviceId)
@@ -922,8 +911,6 @@ public class CpqdOfdpa2Pipeline extends Ofdpa2Pipeline {
         FlowRuleOperations.Builder ops = FlowRuleOperations.builder();
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder();
-        selector = DefaultTrafficSelector.builder();
-        treatment = DefaultTrafficTreatment.builder();
         FlowRule rule = DefaultFlowRule.builder()
                 .forDevice(deviceId)
                 .withSelector(selector.build())

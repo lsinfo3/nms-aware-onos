@@ -42,14 +42,18 @@ import org.onosproject.store.primitives.PartitionService;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.AsyncAtomicValue;
-import org.onosproject.store.service.AsyncConsistentMap;
 import org.onosproject.store.service.AsyncDocumentTree;
+import org.onosproject.store.service.AsyncConsistentMultimap;
+import org.onosproject.store.service.AsyncConsistentTreeMap;
 import org.onosproject.store.service.AtomicCounterBuilder;
+import org.onosproject.store.service.AtomicCounterMapBuilder;
 import org.onosproject.store.service.AtomicValueBuilder;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.ConsistentMapBuilder;
+import org.onosproject.store.service.ConsistentMultimapBuilder;
 import org.onosproject.store.service.ConsistentTreeMapBuilder;
 import org.onosproject.store.service.DistributedSetBuilder;
+import org.onosproject.store.service.DocumentTreeBuilder;
 import org.onosproject.store.service.EventuallyConsistentMapBuilder;
 import org.onosproject.store.service.LeaderElectorBuilder;
 import org.onosproject.store.service.MapInfo;
@@ -64,7 +68,6 @@ import org.onosproject.store.service.WorkQueueStats;
 import org.slf4j.Logger;
 
 import com.google.common.collect.Maps;
-import com.google.common.util.concurrent.Futures;
 
 /**
  * Implementation for {@code StorageService} and {@code StorageAdminService}.
@@ -93,8 +96,7 @@ public class StorageManager implements StorageService, StorageAdminService {
     private final Supplier<TransactionId> transactionIdGenerator =
             () -> TransactionId.from(UUID.randomUUID().toString());
     private DistributedPrimitiveCreator federatedPrimitiveCreator;
-    private AsyncConsistentMap<TransactionId, Transaction.State> transactions;
-    private TransactionCoordinator transactionCoordinator;
+    private TransactionManager transactionManager;
 
     @Activate
     public void activate() {
@@ -103,13 +105,7 @@ public class StorageManager implements StorageService, StorageAdminService {
             .filter(id -> !id.equals(PartitionId.from(0)))
             .forEach(id -> partitionMap.put(id, partitionService.getDistributedPrimitiveCreator(id)));
         federatedPrimitiveCreator = new FederatedDistributedPrimitiveCreator(partitionMap);
-        transactions = this.<TransactionId, Transaction.State>consistentMapBuilder()
-                    .withName("onos-transactions")
-                    .withSerializer(Serializer.using(KryoNamespaces.API,
-                            Transaction.class,
-                            Transaction.State.class))
-                    .buildAsyncMap();
-        transactionCoordinator = new TransactionCoordinator(transactions);
+        transactionManager = new TransactionManager(this, partitionService);
         log.info("Started");
     }
 
@@ -133,9 +129,28 @@ public class StorageManager implements StorageService, StorageAdminService {
     }
 
     @Override
+    public <V> DocumentTreeBuilder<V> documentTreeBuilder() {
+        checkPermission(STORAGE_WRITE);
+        return new DefaultDocumentTreeBuilder<V>(federatedPrimitiveCreator);
+    }
+
+    @Override
     public <V> ConsistentTreeMapBuilder<V> consistentTreeMapBuilder() {
         return new DefaultConsistentTreeMapBuilder<V>(
                 federatedPrimitiveCreator);
+    }
+
+    @Override
+    public <K, V> ConsistentMultimapBuilder<K, V> consistentMultimapBuilder() {
+        checkPermission(STORAGE_WRITE);
+        return new DefaultConsistentMultimapBuilder<K, V>(
+                federatedPrimitiveCreator);
+    }
+
+    @Override
+    public <K> AtomicCounterMapBuilder<K> atomicCounterMapBuilder() {
+        checkPermission(STORAGE_WRITE);
+        return new DefaultAtomicCounterMapBuilder<>(federatedPrimitiveCreator);
     }
 
     @Override
@@ -163,9 +178,7 @@ public class StorageManager implements StorageService, StorageAdminService {
     @Override
     public TransactionContextBuilder transactionContextBuilder() {
         checkPermission(STORAGE_WRITE);
-        return new DefaultTransactionContextBuilder(transactionIdGenerator.get(),
-                federatedPrimitiveCreator,
-                transactionCoordinator);
+        return new DefaultTransactionContextBuilder(transactionIdGenerator.get(), transactionManager);
     }
 
     @Override
@@ -184,6 +197,22 @@ public class StorageManager implements StorageService, StorageAdminService {
     public <V> AsyncDocumentTree<V> getDocumentTree(String name, Serializer serializer) {
         checkPermission(STORAGE_WRITE);
         return federatedPrimitiveCreator.newAsyncDocumentTree(name, serializer);
+    }
+
+    @Override
+    public <K, V> AsyncConsistentMultimap<K, V> getAsyncSetMultimap(
+            String name, Serializer serializer) {
+        checkPermission(STORAGE_WRITE);
+        return federatedPrimitiveCreator.newAsyncConsistentSetMultimap(name,
+                                                                serializer);
+    }
+
+    @Override
+    public <V> AsyncConsistentTreeMap<V> getAsyncTreeMap(
+            String name, Serializer serializer) {
+        checkPermission(STORAGE_WRITE);
+        return federatedPrimitiveCreator.newAsyncConsistentTreeMap(name,
+                                                                   serializer);
     }
 
     @Override
@@ -219,7 +248,7 @@ public class StorageManager implements StorageService, StorageAdminService {
 
     @Override
     public Collection<TransactionId> getPendingTransactions() {
-        return Futures.getUnchecked(transactions.keySet());
+        return transactionManager.getPendingTransactions();
     }
 
     private List<MapInfo> listMapInfo(DistributedPrimitiveCreator creator) {

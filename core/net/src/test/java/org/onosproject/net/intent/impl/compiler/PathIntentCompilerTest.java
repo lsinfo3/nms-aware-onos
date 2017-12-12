@@ -60,6 +60,7 @@ import static org.easymock.EasyMock.createMock;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThan;
@@ -163,7 +164,8 @@ public class PathIntentCompilerTest {
     private PathIntent constraintMplsIntent;
 
     /**
-     * Configures objects used in all the test cases.
+     * Configures mock objects used in all the test cases.
+     * Creates the intents to test as well.
      */
     @Before
     public void setUp() {
@@ -782,6 +784,10 @@ public class PathIntentCompilerTest {
         List<Intent> compiled = sut.compile(intent, Collections.emptyList());
         assertThat(compiled, hasSize(1));
 
+        assertThat("key is inherited",
+                   compiled.stream().map(Intent::key).collect(Collectors.toList()),
+                   everyItem(is(intent.key())));
+
         Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
 
         FlowRule rule1 = rules.stream()
@@ -914,13 +920,11 @@ public class PathIntentCompilerTest {
     }
 
     /**
-     * Tests the random selection of VlanIds in the PathCompiler.
+     * Tests the random selection of VLAN Ids in the PathCompiler.
      * It can fail randomly (it is unlikely)
      */
     @Test
     public void testRandomVlanSelection() {
-
-        if (PathCompiler.RANDOM_SELECTION) {
 
             sut.activate();
 
@@ -969,7 +973,6 @@ public class PathIntentCompilerTest {
 
             sut.deactivate();
 
-        }
 
     }
 
@@ -989,8 +992,8 @@ public class PathIntentCompilerTest {
                     .collect(Collectors.toSet());
             assertThat(vlanRules, hasSize(1));
             L2ModificationInstruction.ModVlanIdInstruction vlanRule = vlanRules.iterator().next();
-            assertThat(vlanRule.vlanId().toShort(), greaterThan((short) VlanId.NO_VID));
-            assertThat(vlanRule.vlanId().toShort(), lessThan((short) VlanId.MAX_VLAN));
+            assertThat(vlanRule.vlanId().toShort(), greaterThan(VlanId.NO_VID));
+            assertThat(vlanRule.vlanId().toShort(), lessThan(VlanId.MAX_VLAN));
             vlanToEncap = vlanRule.vlanId();
         } else if (!isIngress && !isEgress) {
 
@@ -1000,8 +1003,8 @@ public class PathIntentCompilerTest {
                     .collect(Collectors.toSet());
             assertThat(vlanRules, hasSize(1));
             L2ModificationInstruction.ModVlanIdInstruction vlanRule = vlanRules.iterator().next();
-            assertThat(vlanRule.vlanId().toShort(), greaterThan((short) VlanId.NO_VID));
-            assertThat(vlanRule.vlanId().toShort(), lessThan((short) VlanId.MAX_VLAN));
+            assertThat(vlanRule.vlanId().toShort(), greaterThan(VlanId.NO_VID));
+            assertThat(vlanRule.vlanId().toShort(), lessThan(VlanId.MAX_VLAN));
             vlanToEncap = vlanRule.vlanId();
 
         } else {
@@ -1043,8 +1046,10 @@ public class PathIntentCompilerTest {
                 .findFirst()
                 .get();
         verifyIdAndPriority(rule1, d1p0.deviceId());
-        assertThat(rule1.selector(), is(DefaultTrafficSelector.builder(selector)
-                .matchInPort(d1p0.port()).build()));
+        assertThat(rule1.selector(), is(DefaultTrafficSelector
+                                                .builder(selector)
+                                                .matchInPort(d1p0.port())
+                                                .build()));
         MplsLabel mplsLabelToEncap = verifyMplsEncapTreatment(rule1.treatment(), d1p1, true, false);
 
         FlowRule rule2 = rules.stream()
@@ -1053,7 +1058,7 @@ public class PathIntentCompilerTest {
                 .get();
         verifyIdAndPriority(rule2, d2p0.deviceId());
         verifyMplsEncapSelector(rule2.selector(), d2p0, mplsLabelToEncap);
-        verifyMplsEncapTreatment(rule2.treatment(), d2p1, false, false);
+        mplsLabelToEncap = verifyMplsEncapTreatment(rule2.treatment(), d2p1, false, false);
 
         FlowRule rule3 = rules.stream()
                 .filter(x -> x.deviceId().equals(d3p0.deviceId()))
@@ -1077,19 +1082,29 @@ public class PathIntentCompilerTest {
         assertThat((ruleOutput.iterator().next()).port(), is(egress.port()));
         MplsLabel mplsToEncap = MplsLabel.mplsLabel(0);
         if (isIngress && !isEgress) {
-            Set<L2ModificationInstruction.ModMplsLabelInstruction> mplsRules =
-                    trafficTreatment.allInstructions().stream()
-                            .filter(treat -> treat instanceof L2ModificationInstruction.ModMplsLabelInstruction)
-                            .map(x -> (L2ModificationInstruction.ModMplsLabelInstruction) x)
-                            .collect(Collectors.toSet());
+            Set<L2ModificationInstruction.ModMplsLabelInstruction> mplsRules = trafficTreatment
+                    .allInstructions()
+                    .stream()
+                    .filter(treat -> treat instanceof L2ModificationInstruction.ModMplsLabelInstruction)
+                    .map(x -> (L2ModificationInstruction.ModMplsLabelInstruction) x)
+                    .collect(Collectors.toSet());
             assertThat(mplsRules, hasSize(1));
             L2ModificationInstruction.ModMplsLabelInstruction mplsRule = mplsRules.iterator().next();
-            assertThat(mplsRule.mplsLabel().toInt(), greaterThan(0));
-            mplsToEncap = mplsRule.mplsLabel();
+            assertThat(mplsRule.label().toInt(), greaterThan(0));
+            assertThat(mplsRule.label().toInt(), lessThan(MplsLabel.MAX_MPLS));
+            mplsToEncap = mplsRule.label();
         } else if (!isIngress && !isEgress) {
-            assertThat(trafficTreatment.allInstructions().stream()
-                               .filter(treat -> treat instanceof L2ModificationInstruction.ModMplsLabelInstruction)
-                               .collect(Collectors.toSet()), hasSize(0));
+            Set<L2ModificationInstruction.ModMplsLabelInstruction> mplsRules = trafficTreatment
+                    .allInstructions()
+                    .stream()
+                    .filter(treat -> treat instanceof L2ModificationInstruction.ModMplsLabelInstruction)
+                    .map(x -> (L2ModificationInstruction.ModMplsLabelInstruction) x)
+                    .collect(Collectors.toSet());
+            assertThat(mplsRules, hasSize(1));
+            L2ModificationInstruction.ModMplsLabelInstruction mplsRule = mplsRules.iterator().next();
+            assertThat(mplsRule.label().toInt(), greaterThan(0));
+            assertThat(mplsRule.label().toInt(), lessThan(MplsLabel.MAX_MPLS));
+            mplsToEncap = mplsRule.label();
         } else {
             assertThat(trafficTreatment.allInstructions().stream()
                                .filter(treat -> treat instanceof L2ModificationInstruction.ModMplsLabelInstruction)
@@ -1099,7 +1114,6 @@ public class PathIntentCompilerTest {
                                .collect(Collectors.toSet()), hasSize(1));
 
         }
-
         return mplsToEncap;
 
     }

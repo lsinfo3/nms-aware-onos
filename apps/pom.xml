@@ -21,7 +21,7 @@
     <parent>
         <groupId>org.onosproject</groupId>
         <artifactId>onos</artifactId>
-        <version>1.7.2-SNAPSHOT</version>
+        <version>1.8.10-SNAPSHOT</version>
     </parent>
 
     <artifactId>onos-apps</artifactId>
@@ -30,7 +30,6 @@
     <description>ONOS sample applications</description>
 
     <modules>
-        <module>ifwd</module>
         <module>acl</module>
         <module>faultmanagement</module>
         <module>fwd</module>
@@ -81,8 +80,9 @@
         <module>rabbitmq</module>
         <module>learning-switch</module>
         <module>tenbi</module>
+        <module>tetunnel</module>
+        <module>actn-mdsc</module>
     </modules>
-
 
     <properties>
         <web.context>default</web.context>

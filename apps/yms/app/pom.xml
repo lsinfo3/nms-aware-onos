@@ -22,7 +22,7 @@
     <parent>
         <artifactId>onos-yms</artifactId>
         <groupId>org.onosproject</groupId>
-        <version>1.7.2-SNAPSHOT</version>
+        <version>1.8.10-SNAPSHOT</version>
     </parent>
 
     <artifactId>onos-app-yms</artifactId>
@@ -34,23 +34,51 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.framework</artifactId>
+            <version>4.2.1</version>
+        </dependency>
+        <!--https://mvnrepository.com/artifact/org.apache.servicemix.bundles/org.apache.servicemix.bundles.dom4j -->
+        <dependency>
+            <groupId>org.apache.servicemix.bundles</groupId>
+            <artifactId>org.apache.servicemix.bundles.dom4j</artifactId>
+            <version>1.6.1_5</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.4</version>
+        </dependency>
+        <dependency>
             <groupId>org.onosproject</groupId>
             <artifactId>onos-app-yms-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.onosproject</groupId>
-            <artifactId>onlab-junit</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.onosproject</groupId>
-            <artifactId>onos-api</artifactId>
-            <classifier>tests</classifier>
-            <scope>test</scope>
+            <artifactId>onos-yang-utils-generator</artifactId>
+            <version>1.10</version>
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <version>3.2.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <instructions>
+                        <Private-Package>
+                            org.onosproject.yangutils.datamodel.*,
+                            org.onosproject.yangutils.translator.*,
+                            org.onosproject.yangutils.linker.*,
+                            org.onosproject.yangutils.utils.*
+                        </Private-Package>
+                    </instructions>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

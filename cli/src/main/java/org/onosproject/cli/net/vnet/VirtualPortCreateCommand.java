@@ -23,12 +23,8 @@ import org.onosproject.incubator.net.virtual.NetworkId;
 import org.onosproject.incubator.net.virtual.VirtualDevice;
 import org.onosproject.incubator.net.virtual.VirtualNetworkAdminService;
 import org.onosproject.incubator.net.virtual.VirtualNetworkService;
-import org.onosproject.net.DefaultAnnotations;
-import org.onosproject.net.DefaultDevice;
-import org.onosproject.net.DefaultPort;
-import org.onosproject.net.Device;
+import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.DeviceId;
-import org.onosproject.net.Port;
 import org.onosproject.net.PortNumber;
 import org.onosproject.net.device.DeviceService;
 
@@ -56,24 +52,29 @@ public class VirtualPortCreateCommand extends AbstractShellCommand {
     Integer portNum = null;
 
     @Argument(index = 3, name = "physDeviceId", description = "Physical Device ID",
-            required = true, multiValued = false)
+            required = false, multiValued = false)
     String physDeviceId = null;
 
     @Argument(index = 4, name = "physPortNum", description = "Physical device port number",
-            required = true, multiValued = false)
+            required = false, multiValued = false)
     Integer physPortNum = null;
 
     @Override
     protected void execute() {
         VirtualNetworkAdminService service = get(VirtualNetworkAdminService.class);
         DeviceService deviceService = get(DeviceService.class);
+
         VirtualDevice virtualDevice = getVirtualDevice(DeviceId.deviceId(deviceId));
         checkNotNull(virtualDevice, "The virtual device does not exist.");
 
-        DefaultAnnotations annotations = DefaultAnnotations.builder().build();
-        Device physDevice = new DefaultDevice(null, DeviceId.deviceId(physDeviceId),
-                                              null, null, null, null, null, null, annotations);
-        Port realizedBy = new DefaultPort(physDevice, PortNumber.portNumber(physPortNum), true);
+        ConnectPoint realizedBy = null;
+        if (physDeviceId != null && physPortNum != null) {
+            checkNotNull(physPortNum, "The physical port does not specified.");
+            realizedBy = new ConnectPoint(DeviceId.deviceId(physDeviceId),
+                                               PortNumber.portNumber(physPortNum));
+            checkNotNull(realizedBy, "The physical port does not exist.");
+        }
+
         service.createVirtualPort(NetworkId.networkId(networkId), DeviceId.deviceId(deviceId),
                                   PortNumber.portNumber(portNum), realizedBy);
         print("Virtual port successfully created.");

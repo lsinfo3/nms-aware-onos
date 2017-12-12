@@ -21,6 +21,7 @@ import io.atomix.manager.util.ResourceManagerTypeResolver;
 import io.atomix.variables.internal.LongCommands;
 
 import java.util.Arrays;
+import java.util.Optional;
 
 import org.onlab.util.Match;
 import org.onosproject.cluster.Leader;
@@ -50,7 +51,7 @@ import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.DocumentPath;
 import org.onosproject.store.service.DocumentTreeEvent;
 import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapTransaction;
+import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.Task;
 import org.onosproject.store.service.Versioned;
 import org.onosproject.store.service.WorkQueueStats;
@@ -97,7 +98,7 @@ public final class CatalystSerializers {
         serializer.register(TransactionId.class, factory);
         serializer.register(MapUpdate.class, factory);
         serializer.register(MapUpdate.Type.class, factory);
-        serializer.register(MapTransaction.class, factory);
+        serializer.register(TransactionLog.class, factory);
         serializer.register(Versioned.class, factory);
         serializer.register(MapEvent.class, factory);
         serializer.register(Task.class, factory);
@@ -108,6 +109,9 @@ public final class CatalystSerializers {
         serializer.register(DocumentTreeEvent.class, factory);
         serializer.register(Maps.immutableEntry("a", "b").getClass(), factory);
         serializer.register(ImmutableList.of().getClass(), factory);
+        serializer.register(ImmutableList.of("a").getClass(), factory);
+        serializer.register(Arrays.asList().getClass(), factory);
+        serializer.register(Optional.class, factory);
 
         serializer.resolve(new LongCommands.TypeResolver());
         serializer.resolve(new AtomixConsistentMapCommands.TypeResolver());

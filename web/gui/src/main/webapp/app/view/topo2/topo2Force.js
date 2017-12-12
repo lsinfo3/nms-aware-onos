@@ -26,42 +26,11 @@
     var $log,
         wss;
 
-    // SVG elements;
-    var linkG,
-        linkLabelG,
-        numLinkLblsG,
-        portLabelG,
-        nodeG;
-
-    // internal state
-    var settings,   // merged default settings and options
-        force,      // force layout object
-        drag,       // drag behavior handler
-        network = {
-            nodes: [],
-            links: [],
-            linksByDevice: {},
-            lookup: {},
-            revLinkToKey: {}
-        },
-        lu,                     // shorthand for lookup
-        rlk,                    // shorthand for revLinktoKey
-        showHosts = false,      // whether hosts are displayed
-        showOffline = true,     // whether offline devices are displayed
-        nodeLock = false,       // whether nodes can be dragged or not (locked)
-        fTimer,                 // timer for delayed force layout
-        fNodesTimer,            // timer for delayed nodes update
-        fLinksTimer,            // timer for delayed links update
-        dim,                    // the dimensions of the force layout [w,h]
-        linkNums = [];          // array of link number labels
-
-    // D3 selections;
-    var link,
-        linkLabel,
-        node;
-
-    var $log, wss, t2is, t2rs, t2ls, t2vs, t2bcs;
+    var t2is, t2rs, t2ls, t2vs, t2bcs;
     var svg, forceG, uplink, dim, opts;
+
+    // D3 Selections
+    var node;
 
     // ========================== Helper Functions
 
@@ -70,7 +39,9 @@
         forceG = _forceG_;
         uplink = _uplink_;
         dim = _dim_;
-        opts = _opts_
+        opts = _opts_;
+
+        t2ls.init(svg, forceG, uplink, dim, opts);
     }
 
     function destroy() {
@@ -91,7 +62,7 @@
         var parentRegion = data.parent;
         var span = topdiv.select('.parentRegion').select('span');
         span.text(parentRegion || '[no parent]');
-        span.classed('nav-me', !!parentRegion);
+        span.classed('nav-me', Boolean(parentRegion));
     }
 
     function doTmpCurrentRegion(data) {
@@ -162,30 +133,23 @@
         $log.debug('>> topo2CurrentRegion event:', data);
         doTmpCurrentRegion(data);
         t2rs.addRegion(data);
-        t2ls.init(svg, forceG, uplink, dim, opts);
-        t2ls.update();
-        t2ls.start();
+        t2ls.createForceLayout();
     }
 
     function topo2PeerRegions(data) {
-        $log.debug('>> topo2PeerRegions event:', data)
+        $log.debug('>> topo2PeerRegions event:', data);
         doTmpPeerRegions(data);
-    }
-
-    function topo2PeerRegions(data) {
-        $log.debug('>> topo2PeerRegions event:', data)
     }
 
     function startDone(data) {
         $log.debug('>> topo2StartDone event:', data);
     }
 
-
     function showMastership(masterId) {
-        if (!masterId) {
-            restoreLayerState();
-        } else {
+        if (masterId) {
             showMastershipFor(masterId);
+        } else {
+            restoreLayerState();
         }
     }
 
@@ -219,22 +183,53 @@
     function newDim(_dim_) {
         dim = _dim_;
         t2vs.newDim(dim);
-        // force.size(dim);
-        // tms.newDim(dim);
-        t2ls.setDimensions();
-    }
-
-    function getDim() {
-        return dim;
     }
 
     // ========================== Main Service Definition
 
+    function update(elements) {
+        angular.forEach(elements, function (el) {
+            el.update();
+        });
+    }
+
+    function updateNodes() {
+        update(t2rs.regionNodes());
+    }
+
+    function updateLinks() {
+        update(t2rs.regionLinks());
+    }
+
+    function resetAllLocations() {
+        var nodes = t2rs.regionNodes();
+
+        angular.forEach(nodes, function (node) {
+            node.resetPosition();
+        });
+
+        t2ls.update();
+        t2ls.tick();
+    }
+
+    function unpin() {
+        var hovered = t2rs.filterRegionNodes(function (model) {
+            return model.get('hovered');
+        });
+
+        angular.forEach(hovered, function (model) {
+            model.fixed = false;
+            model.el.classed('fixed', false);
+        });
+    }
+
     angular.module('ovTopo2')
     .factory('Topo2ForceService',
-        ['$log', 'WebSocketService', 'Topo2InstanceService', 'Topo2RegionService',
-        'Topo2LayoutService', 'Topo2ViewService', 'Topo2BreadcrumbService',
-        function (_$log_, _wss_, _t2is_, _t2rs_, _t2ls_, _t2vs_, _t2bcs_) {
+        ['$log', 'WebSocketService', 'Topo2InstanceService',
+        'Topo2RegionService', 'Topo2LayoutService', 'Topo2ViewService',
+        'Topo2BreadcrumbService', 'Topo2ZoomService',
+        function (_$log_, _wss_, _t2is_, _t2rs_, _t2ls_,
+            _t2vs_, _t2bcs_, zoomService) {
 
             $log = _$log_;
             wss = _wss_;
@@ -243,6 +238,19 @@
             t2ls = _t2ls_;
             t2vs = _t2vs_;
             t2bcs = _t2bcs_;
+
+            var onZoom = function () {
+                var nodes = [].concat(
+                        t2rs.regionNodes(),
+                        t2rs.regionLinks()
+                    );
+
+                angular.forEach(nodes, function (node) {
+                    node.setScale();
+                });
+            };
+
+            zoomService.addZoomEventListener(onZoom);
 
             return {
 
@@ -256,7 +264,12 @@
                 topo2StartDone: startDone,
 
                 showMastership: showMastership,
-                topo2PeerRegions: topo2PeerRegions
+                topo2PeerRegions: topo2PeerRegions,
+
+                updateNodes: updateNodes,
+                updateLinks: updateLinks,
+                resetAllLocations: resetAllLocations,
+                unpin: unpin
             };
         }]);
-}());
+})();

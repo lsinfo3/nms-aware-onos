@@ -22,14 +22,14 @@
     <parent>
         <groupId>org.onosproject</groupId>
         <artifactId>onos-app-openstacknetworking</artifactId>
-        <version>1.7.2-SNAPSHOT</version>
+        <version>1.8.10-SNAPSHOT</version>
     </parent>
 
     <artifactId>onos-app-openstacknetworking-web</artifactId>
     <packaging>bundle</packaging>
 
     <properties>
-        <web.context>/onos/openstackswitching</web.context>
+        <web.context>/onos/openstacknetworking</web.context>
         <api.version>1.0.0</api.version>
         <api.title>ONOS Openstack Networking REST API</api.title>
         <api.description>

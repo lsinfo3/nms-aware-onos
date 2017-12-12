@@ -52,7 +52,6 @@ import org.onosproject.net.provider.ProviderId;
 import org.onosproject.net.region.DefaultRegion;
 import org.onosproject.net.region.Region;
 import org.onosproject.net.region.RegionId;
-import org.onosproject.net.region.RegionListener;
 import org.onosproject.net.region.RegionService;
 import org.onosproject.ui.UiTopoLayoutService;
 import org.onosproject.ui.impl.AbstractUiImplTest;
@@ -264,7 +263,7 @@ abstract class AbstractTopoModelTest extends AbstractUiImplTest {
                                          String parentId) {
         UiTopoLayoutId pid = parentId == null
                 ? UiTopoLayoutId.DEFAULT_ID : layoutId(parentId);
-        return new UiTopoLayout(layoutId(layoutId), region, pid);
+        return new UiTopoLayout(layoutId(layoutId)).region(region).parent(pid);
     }
 
     /**
@@ -501,8 +500,7 @@ abstract class AbstractTopoModelTest extends AbstractUiImplTest {
         }
     }
 
-    // TODO: consider implementing RegionServiceAdapter and extending that here
-    private static class MockRegionService implements RegionService {
+    private static class MockRegionService extends RegionServiceAdapter {
 
         private final Map<RegionId, Region> lookup = new HashMap<>();
 
@@ -548,14 +546,6 @@ abstract class AbstractTopoModelTest extends AbstractUiImplTest {
                 return DEVS_RIGHT;
             }
             return Collections.emptySet();
-        }
-
-        @Override
-        public void addListener(RegionListener listener) {
-        }
-
-        @Override
-        public void removeListener(RegionListener listener) {
         }
     }
 

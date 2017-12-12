@@ -15,15 +15,16 @@
  */
 package org.onosproject.net.intent.impl.compiler;
 
+import com.google.common.collect.ImmutableSet;
 import org.hamcrest.Matchers;
 import org.junit.Test;
+import org.onlab.packet.IpPrefix;
+import org.onlab.packet.VlanId;
 import org.onosproject.TestApplicationId;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.net.ConnectPoint;
-import org.onosproject.net.DeviceId;
-import org.onosproject.net.ElementId;
-import org.onosproject.net.Path;
-import org.onosproject.net.device.DeviceServiceAdapter;
+import org.onosproject.net.FilteredConnectPoint;
+import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.intent.AbstractIntentTest;
@@ -31,7 +32,6 @@ import org.onosproject.net.intent.Intent;
 import org.onosproject.net.intent.IntentTestsMocks;
 import org.onosproject.net.intent.LinkCollectionIntent;
 import org.onosproject.net.intent.MultiPointToSinglePointIntent;
-import org.onosproject.net.topology.PathServiceAdapter;
 
 import java.util.HashSet;
 import java.util.List;
@@ -43,7 +43,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.onosproject.net.NetTestTools.connectPoint;
-import static org.onosproject.net.NetTestTools.createPath;
 import static org.onosproject.net.intent.LinksHaveEntryWithSourceDestinationPairMatcher.linksHasPath;
 
 /**
@@ -55,47 +54,6 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
 
     private TrafficSelector selector = new IntentTestsMocks.MockSelector();
     private TrafficTreatment treatment = new IntentTestsMocks.MockTreatment();
-
-    /**
-     * Mock path service for creating paths within the test.
-     */
-    private static class MockPathService extends PathServiceAdapter {
-
-        final String[] pathHops;
-
-        /**
-         * Constructor that provides a set of hops to mock.
-         *
-         * @param pathHops path hops to mock
-         */
-        MockPathService(String[] pathHops) {
-            this.pathHops = pathHops;
-        }
-
-        @Override
-        public Set<Path> getPaths(ElementId src, ElementId dst) {
-            Set<Path> result = new HashSet<>();
-
-            String[] allHops = new String[pathHops.length + 1];
-            allHops[0] = src.toString();
-            if (pathHops.length != 0) {
-                System.arraycopy(pathHops, 0, allHops, 1, pathHops.length);
-            }
-            result.add(createPath(allHops));
-
-            return result;
-        }
-    }
-
-    /**
-     * Mocks the device service so that a device appears available in the test.
-     */
-    private static class MockDeviceService extends DeviceServiceAdapter {
-        @Override
-        public boolean isAvailable(DeviceId deviceId) {
-            return true;
-        }
-    }
 
     /**
      * Creates a MultiPointToSinglePoint intent for a group of ingress points
@@ -123,6 +81,25 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
     }
 
     /**
+     * Generate MultiPointToSinglePointIntent with filtered connection point.
+     *
+     * @param ingress filtered ingress points
+     * @param egress filtered egress point
+     * @return
+     */
+    private MultiPointToSinglePointIntent makeFilteredConnectPointIntent(Set<FilteredConnectPoint> ingress,
+                                                                         FilteredConnectPoint egress,
+                                                                         TrafficSelector trafficSelector) {
+        return MultiPointToSinglePointIntent.builder()
+                .appId(APPID)
+                .treatment(treatment)
+                .selector(trafficSelector)
+                .filteredIngressPoints(ingress)
+                .filteredEgressPoint(egress)
+                .build();
+    }
+
+    /**
      * Creates a compiler for MultiPointToSinglePoint intents.
      *
      * @param hops hops to use while computing paths for this intent
@@ -131,8 +108,8 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
     private MultiPointToSinglePointIntentCompiler makeCompiler(String[] hops) {
         MultiPointToSinglePointIntentCompiler compiler =
                 new MultiPointToSinglePointIntentCompiler();
-        compiler.pathService = new MockPathService(hops);
-        compiler.deviceService = new MockDeviceService();
+        compiler.pathService = new IntentTestsMocks.Mp2MpMockPathService(hops);
+        compiler.deviceService = new IntentTestsMocks.MockDeviceService();
         return compiler;
     }
 
@@ -148,8 +125,7 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
         MultiPointToSinglePointIntent intent = makeIntent(ingress, egress);
         assertThat(intent, is(notNullValue()));
 
-        String[] hops = {"h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8",
-                egress};
+        String[] hops = {"h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8"};
         MultiPointToSinglePointIntentCompiler compiler = makeCompiler(hops);
         assertThat(compiler, is(notNullValue()));
 
@@ -170,6 +146,7 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
             assertThat(linkIntent.links(), linksHasPath("h7", "h8"));
             assertThat(linkIntent.links(), linksHasPath("h8", "egress"));
         }
+        assertThat("key is inherited", resultIntent.key(), is(intent.key()));
     }
 
     /**
@@ -184,7 +161,7 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
         MultiPointToSinglePointIntent intent = makeIntent(ingress, egress);
         assertThat(intent, is(notNullValue()));
 
-        final String[] hops = {"inner1", "inner2", egress};
+        final String[] hops = {"inner1", "inner2"};
         MultiPointToSinglePointIntentCompiler compiler = makeCompiler(hops);
         assertThat(compiler, is(notNullValue()));
 
@@ -202,6 +179,7 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
             assertThat(linkIntent.links(), linksHasPath("inner1", "inner2"));
             assertThat(linkIntent.links(), linksHasPath("inner2", "egress"));
         }
+        assertThat("key is inherited", resultIntent.key(), is(intent.key()));
     }
 
     /**
@@ -217,7 +195,7 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
         MultiPointToSinglePointIntent intent = makeIntent(ingress, egress);
         assertThat(intent, is(notNullValue()));
 
-        final String[] hops = {"n1", egress};
+        final String[] hops = {"n1"};
         MultiPointToSinglePointIntentCompiler compiler = makeCompiler(hops);
         assertThat(compiler, is(notNullValue()));
 
@@ -237,6 +215,7 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
             }
             assertThat(linkIntent.links(), linksHasPath("n1", egress));
         }
+        assertThat("key is inherited", resultIntent.key(), is(intent.key()));
     }
 
     /**
@@ -245,12 +224,12 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
     @Test
     public void testSameDeviceCompilation() {
         String[] ingress = {"i1", "i2"};
-        String egress = "i1";
+        String egress = "i3";
 
         MultiPointToSinglePointIntent intent = makeIntent(ingress, egress);
         assertThat(intent, is(notNullValue()));
 
-        final String[] hops = {"i1", "i2"};
+        final String[] hops = {};
         MultiPointToSinglePointIntentCompiler compiler = makeCompiler(hops);
         assertThat(compiler, is(notNullValue()));
 
@@ -264,7 +243,94 @@ public class MultiPointToSinglePointIntentCompilerTest extends AbstractIntentTes
             LinkCollectionIntent linkIntent = (LinkCollectionIntent) resultIntent;
             assertThat(linkIntent.links(), hasSize(ingress.length));
 
-            assertThat(linkIntent.links(), linksHasPath("i2", "i1"));
+            assertThat(linkIntent.links(), linksHasPath("i1", "i3"));
+            assertThat(linkIntent.links(), linksHasPath("i2", "i3"));
         }
+        assertThat("key is inherited", resultIntent.key(), is(intent.key()));
     }
+
+    /**
+     * Tests filtered ingress and egress.
+     */
+    @Test
+    public void testFilteredConnectPointIntent() {
+
+        Set<FilteredConnectPoint> ingress = ImmutableSet.of(
+                new FilteredConnectPoint(connectPoint("of1", 1),
+                                         DefaultTrafficSelector.builder().matchVlanId(VlanId.vlanId("100")).build()),
+                new FilteredConnectPoint(connectPoint("of2", 1),
+                                         DefaultTrafficSelector.builder().matchVlanId(VlanId.vlanId("200")).build())
+        );
+
+        FilteredConnectPoint egress = new FilteredConnectPoint(connectPoint("of4", 1));
+
+        MultiPointToSinglePointIntent intent = makeFilteredConnectPointIntent(ingress, egress, selector);
+        String[] hops = {"of3"};
+
+        MultiPointToSinglePointIntentCompiler compiler = makeCompiler(hops);
+        assertThat(compiler, is(notNullValue()));
+
+        List<Intent> result = compiler.compile(intent, null);
+        assertThat(result, is(notNullValue()));
+        assertThat(result, hasSize(1));
+
+        Intent resultIntent = result.get(0);
+        assertThat(resultIntent, instanceOf(LinkCollectionIntent.class));
+
+        if (resultIntent instanceof LinkCollectionIntent) {
+            LinkCollectionIntent linkIntent = (LinkCollectionIntent) resultIntent;
+            assertThat(linkIntent.links(), hasSize(3));
+            assertThat(linkIntent.links(), linksHasPath("of1", "of3"));
+            assertThat(linkIntent.links(), linksHasPath("of2", "of3"));
+            assertThat(linkIntent.links(), linksHasPath("of3", "of4"));
+        }
+        assertThat("key is inherited", resultIntent.key(), is(intent.key()));
+
+    }
+
+    /**
+     * Tests selector, filtered ingress and egress.
+     */
+    @Test
+    public void testNonTrivialSelectorsIntent() {
+
+        Set<FilteredConnectPoint> ingress = ImmutableSet.of(
+                new FilteredConnectPoint(connectPoint("of1", 1),
+                                         DefaultTrafficSelector.builder().matchVlanId(VlanId.vlanId("100")).build()),
+                new FilteredConnectPoint(connectPoint("of2", 1),
+                                         DefaultTrafficSelector.builder().matchVlanId(VlanId.vlanId("200")).build())
+        );
+
+        TrafficSelector ipPrefixSelector = DefaultTrafficSelector.builder()
+                .matchIPDst(IpPrefix.valueOf("192.168.100.0/24"))
+                .build();
+
+        FilteredConnectPoint egress = new FilteredConnectPoint(connectPoint("of4", 1));
+
+        MultiPointToSinglePointIntent intent = makeFilteredConnectPointIntent(ingress, egress, ipPrefixSelector);
+        String[] hops = {"of3"};
+
+        MultiPointToSinglePointIntentCompiler compiler = makeCompiler(hops);
+        assertThat(compiler, is(notNullValue()));
+
+        List<Intent> result = compiler.compile(intent, null);
+        assertThat(result, is(notNullValue()));
+        assertThat(result, hasSize(1));
+
+        Intent resultIntent = result.get(0);
+        assertThat(resultIntent, instanceOf(LinkCollectionIntent.class));
+
+        if (resultIntent instanceof LinkCollectionIntent) {
+            LinkCollectionIntent linkIntent = (LinkCollectionIntent) resultIntent;
+            assertThat(linkIntent.links(), hasSize(3));
+            assertThat(linkIntent.links(), linksHasPath("of1", "of3"));
+            assertThat(linkIntent.links(), linksHasPath("of2", "of3"));
+            assertThat(linkIntent.links(), linksHasPath("of3", "of4"));
+            assertThat(linkIntent.selector(), is(ipPrefixSelector));
+        }
+        assertThat("key is inherited", resultIntent.key(), is(intent.key()));
+
+    }
+
+
 }

@@ -29,7 +29,6 @@ import org.onosproject.incubator.net.tunnel.TunnelId;
 import org.onosproject.net.intent.constraint.BandwidthConstraint;
 import org.onosproject.net.intent.Constraint;
 import org.onosproject.pce.pceservice.constraint.CostConstraint;
-import org.onosproject.pce.pcestore.api.PceStore;
 
 /**
  * Implementation of an entity which provides functionalities of pce path.
@@ -262,7 +261,7 @@ public final class DefaultPcePath implements PcePath {
         }
 
         @Override
-        public Builder of(Tunnel tunnel) {
+        public Builder of(Tunnel tunnel, List<ExplicitPathInfo> explicitPathInfoList) {
             this.id = TunnelId.valueOf(tunnel.tunnelId().id());
             this.source = tunnel.path().src().deviceId().toString();
             this.destination = tunnel.path().dst().deviceId().toString();
@@ -286,9 +285,7 @@ public final class DefaultPcePath implements PcePath {
                                                                   DataRateUnit.valueOf("BPS"));
             }
 
-            PceStore pceStore = get(PceStore.class);
-            List<ExplicitPathInfo> explicitPathInfoList = pceStore
-                    .getTunnelNameExplicitPathInfoMap(tunnel.tunnelName().value());
+            // Explicit Path
             if (explicitPathInfoList != null) {
                 this.explicitPathInfo = explicitPathInfoList;
             }

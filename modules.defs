@@ -49,6 +49,9 @@ CORE = UTILS + API + [
     '//protocols/isis/api:onos-protocols-isis-api',
     '//protocols/isis/ctl:onos-protocols-isis-ctl',
     '//protocols/isis/isisio:onos-protocols-isis-isisio',
+    '//protocols/lisp/api:onos-protocols-lisp-api',
+    '//protocols/lisp/ctl:onos-protocols-lisp-ctl',
+    '//protocols/lisp/msg:onos-protocols-lisp-msg',
 
     '//drivers/utilities:onos-drivers-utilities',
 
@@ -64,6 +67,7 @@ CORE = UTILS + API + [
     '//providers/snmp/device:onos-providers-snmp-device',
     '//providers/isis/cfg:onos-providers-isis-cfg',
     '//providers/isis/topology:onos-providers-isis-topology',
+    '//providers/lisp/device:onos-providers-lisp-device',
 
     '//web/api:onos-rest',
     '//web/gui:onos-gui',
@@ -83,6 +87,7 @@ ONOS_DRIVERS = [
     '//drivers/netconf:onos-drivers-netconf-oar',
     '//drivers/optical:onos-drivers-optical-oar',
     '//drivers/ovsdb:onos-drivers-ovsdb-oar',
+    '//drivers/juniper:onos-drivers-juniper-oar',
 ]
 
 ONOS_PROVIDERS = [
@@ -105,6 +110,8 @@ ONOS_PROVIDERS = [
     '//providers/rest:onos-providers-rest-oar',
     '//providers/isis:onos-providers-isis-oar',
     '//providers/snmp:onos-providers-snmp-oar',
+    '//providers/link:onos-providers-link-oar',
+    '//providers/lisp:onos-providers-lisp-oar',
 ]
 
 ONOS_APPS = [
@@ -147,6 +154,7 @@ ONOS_APPS = [
     '//apps/test/loadtest:onos-apps-test-loadtest-oar',
     '//apps/test/netcfg-monitor:onos-apps-test-netcfg-monitor-oar',
     '//apps/test/messaging-perf:onos-apps-test-messaging-perf-oar',
+    '//apps/test/transaction-perf:onos-apps-test-transaction-perf-oar',
     '//apps/virtualbng:onos-apps-virtualbng-oar',
     '//apps/vpls:onos-apps-vpls-oar',
     '//apps/vrouter:onos-apps-vrouter-oar',
@@ -157,7 +165,8 @@ ONOS_APPS = [
     '//apps/xosclient:onos-apps-xosclient-oar',
     '//apps/scalablegateway:onos-apps-scalablegateway-oar',
     '//apps/patchpanel:onos-apps-patchpanel-oar',
-    '//apps/ifwd:onos-apps-ifwd-oar',
+    '//apps/castor:onos-apps-castor-oar',
+    '//apps/yms:onos-apps-yms-oar',
 ]
 
 APP_JARS = [

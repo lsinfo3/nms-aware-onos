@@ -15,18 +15,19 @@
  */
 package org.onosproject.store.primitives.impl;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-
+import com.google.common.base.Charsets;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import com.google.common.hash.Hashing;
 import org.onosproject.cluster.PartitionId;
 import org.onosproject.store.primitives.DistributedPrimitiveCreator;
 import org.onosproject.store.service.AsyncAtomicCounter;
+import org.onosproject.store.service.AsyncAtomicCounterMap;
 import org.onosproject.store.service.AsyncAtomicValue;
 import org.onosproject.store.service.AsyncConsistentMap;
+import org.onosproject.store.service.AsyncConsistentMultimap;
 import org.onosproject.store.service.AsyncConsistentTreeMap;
 import org.onosproject.store.service.AsyncDistributedSet;
 import org.onosproject.store.service.AsyncDocumentTree;
@@ -34,12 +35,14 @@ import org.onosproject.store.service.AsyncLeaderElector;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.WorkQueue;
 
-import com.google.common.base.Charsets;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.google.common.hash.Hashing;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.Executor;
+import java.util.function.Supplier;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * {@code DistributedPrimitiveCreator} that federates responsibility for creating
@@ -56,12 +59,13 @@ public class FederatedDistributedPrimitiveCreator implements DistributedPrimitiv
     }
 
     @Override
-    public <K, V> AsyncConsistentMap<K, V> newAsyncConsistentMap(String name, Serializer serializer) {
+    public <K, V> AsyncConsistentMap<K, V> newAsyncConsistentMap(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
         checkNotNull(name);
         checkNotNull(serializer);
         Map<PartitionId, AsyncConsistentMap<K, V>> maps =
                 Maps.transformValues(members,
-                                     partition -> partition.newAsyncConsistentMap(name, serializer));
+                                     partition -> partition.newAsyncConsistentMap(name, serializer, executorSupplier));
         Hasher<K> hasher = key -> {
             int hashCode = Hashing.sha256().hashBytes(serializer.encode(key)).asInt();
             return sortedMemberPartitionIds.get(Math.abs(hashCode) % members.size());
@@ -70,32 +74,46 @@ public class FederatedDistributedPrimitiveCreator implements DistributedPrimitiv
     }
 
     @Override
-    public <V> AsyncConsistentTreeMap<V> newAsyncConsistentTreeMap(String name,
-                                                                   Serializer serializer) {
-        return getCreator(name).newAsyncConsistentTreeMap(name, serializer);
+    public <V> AsyncConsistentTreeMap<V> newAsyncConsistentTreeMap(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newAsyncConsistentTreeMap(name, serializer, executorSupplier);
     }
 
     @Override
-    public <E> AsyncDistributedSet<E> newAsyncDistributedSet(String name, Serializer serializer) {
-        return DistributedPrimitives.newSetFromMap(newAsyncConsistentMap(name, serializer));
+    public <K, V> AsyncConsistentMultimap<K, V> newAsyncConsistentSetMultimap(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newAsyncConsistentSetMultimap(name, serializer, executorSupplier);
     }
 
     @Override
-    public AsyncAtomicCounter newAsyncCounter(String name) {
-        return getCreator(name).newAsyncCounter(name);
+    public <E> AsyncDistributedSet<E> newAsyncDistributedSet(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return DistributedPrimitives.newSetFromMap(newAsyncConsistentMap(name, serializer, executorSupplier));
     }
 
     @Override
-    public <V> AsyncAtomicValue<V> newAsyncAtomicValue(String name, Serializer serializer) {
-        return getCreator(name).newAsyncAtomicValue(name, serializer);
+    public <K> AsyncAtomicCounterMap<K> newAsyncAtomicCounterMap(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newAsyncAtomicCounterMap(name, serializer, executorSupplier);
     }
 
     @Override
-    public AsyncLeaderElector newAsyncLeaderElector(String name) {
+    public AsyncAtomicCounter newAsyncCounter(String name, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newAsyncCounter(name, executorSupplier);
+    }
+
+    @Override
+    public <V> AsyncAtomicValue<V> newAsyncAtomicValue(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newAsyncAtomicValue(name, serializer, executorSupplier);
+    }
+
+    @Override
+    public AsyncLeaderElector newAsyncLeaderElector(String name, Supplier<Executor> executorSupplier) {
         checkNotNull(name);
         Map<PartitionId, AsyncLeaderElector> leaderElectors =
                 Maps.transformValues(members,
-                                     partition -> partition.newAsyncLeaderElector(name));
+                                     partition -> partition.newAsyncLeaderElector(name, executorSupplier));
         Hasher<String> hasher = topic -> {
             int hashCode = Hashing.sha256().hashString(topic, Charsets.UTF_8).asInt();
             return sortedMemberPartitionIds.get(Math.abs(hashCode) % members.size());
@@ -104,13 +122,14 @@ public class FederatedDistributedPrimitiveCreator implements DistributedPrimitiv
     }
 
     @Override
-    public <E> WorkQueue<E> newWorkQueue(String name, Serializer serializer) {
-        return getCreator(name).newWorkQueue(name, serializer);
+    public <E> WorkQueue<E> newWorkQueue(String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newWorkQueue(name, serializer, executorSupplier);
     }
 
     @Override
-    public <V> AsyncDocumentTree<V> newAsyncDocumentTree(String name, Serializer serializer) {
-        return getCreator(name).newAsyncDocumentTree(name, serializer);
+    public <V> AsyncDocumentTree<V> newAsyncDocumentTree(
+            String name, Serializer serializer, Supplier<Executor> executorSupplier) {
+        return getCreator(name).newAsyncDocumentTree(name, serializer, executorSupplier);
     }
 
     @Override

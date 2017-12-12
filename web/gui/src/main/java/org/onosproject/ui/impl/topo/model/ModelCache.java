@@ -193,6 +193,7 @@ class ModelCache {
     private void updateRegion(UiRegion region) {
         RegionId rid = region.id();
         Set<DeviceId> deviceIds = services.region().getRegionDevices(rid);
+        Set<HostId> hostIds = services.region().getRegionHosts(rid);
 
         // Make sure device objects refer to their region
         deviceIds.forEach(d -> {
@@ -205,8 +206,19 @@ class ModelCache {
             }
         });
 
+        hostIds.forEach(d -> {
+            UiHost host = uiTopology.findHost(d);
+            if (host != null) {
+                host.setRegionId(rid);
+            } else {
+                // if we don't have the UiDevice in the topology, what can we do?
+                log.warn("Region host {}, but we don't have UiHost in topology", d);
+            }
+        });
+
         // Make sure the region object refers to the devices
         region.reconcileDevices(deviceIds);
+        region.reconcileHosts(hostIds);
 
         fixupContainmentHierarchy(region);
     }
@@ -419,27 +431,26 @@ class ModelCache {
         host.setEdgeLinkId(elinkId);
 
         // add synthesized edge link to the topology
-        UiEdgeLink edgeLink = addNewEdgeLink(elinkId);
-        edgeLink.attachEdgeLink(elink);
+        addNewEdgeLink(elinkId);
 
         return host;
     }
 
-    private void insertNewUiEdgeLink(UiLinkId id, EdgeLink e) {
-        UiEdgeLink newEdgeLink = addNewEdgeLink(id);
-        newEdgeLink.attachEdgeLink(e);
+    private void insertNewUiEdgeLink(UiLinkId id) {
+        addNewEdgeLink(id);
     }
 
     private void updateHost(UiHost uiHost, Host h) {
         UiEdgeLink existing = uiTopology.findEdgeLink(uiHost.edgeLinkId());
 
+        // TODO: review - do we need EdgeLink now that we are creating from id only?
         EdgeLink currentElink = synthesizeLink(h);
         UiLinkId currentElinkId = uiLinkId(currentElink);
 
         if (existing != null) {
             if (!currentElinkId.equals(existing.id())) {
                 // edge link has changed
-                insertNewUiEdgeLink(currentElinkId, currentElink);
+                insertNewUiEdgeLink(currentElinkId);
                 uiHost.setEdgeLinkId(currentElinkId);
 
                 uiTopology.remove(existing);
@@ -447,7 +458,7 @@ class ModelCache {
 
         } else {
             // no previously existing edge link
-            insertNewUiEdgeLink(currentElinkId, currentElink);
+            insertNewUiEdgeLink(currentElinkId);
             uiHost.setEdgeLinkId(currentElinkId);
 
         }
@@ -526,26 +537,15 @@ class ModelCache {
         fixupContainmentHierarchy(uiTopology.nullRegion());
         uiTopology.allRegions().forEach(this::fixupContainmentHierarchy);
 
-        // make sure devices are in the correct region
+        // make sure devices and hosts are in the correct region
         Set<UiDevice> allDevices = uiTopology.allDevices();
+        Set<UiHost> allHosts = uiTopology.allHosts();
 
         services.region().getRegions().forEach(r -> {
             RegionId rid = r.id();
             UiRegion region = uiTopology.findRegion(rid);
             if (region != null) {
-                Set<DeviceId> deviceIds = services.region().getRegionDevices(rid);
-                region.reconcileDevices(deviceIds);
-
-                deviceIds.forEach(devId -> {
-                    UiDevice dev = uiTopology.findDevice(devId);
-                    if (dev != null) {
-                        dev.setRegionId(r.id());
-                        allDevices.remove(dev);
-                    } else {
-                        log.warn("Region device ID {} but no UiDevice in topology",
-                                devId);
-                    }
-                });
+                reconcileDevicesAndHostsWithRegion(allDevices, allHosts, rid, region);
             } else {
                 log.warn("No UiRegion in topology for ID {}", rid);
             }
@@ -556,9 +556,50 @@ class ModelCache {
         allDevices.forEach(d -> leftOver.add(d.id()));
         uiTopology.nullRegion().reconcileDevices(leftOver);
 
+        Set<HostId> leftOverHosts = new HashSet<>(allHosts.size());
+        allHosts.forEach(h -> leftOverHosts.add(h.id()));
+        uiTopology.nullRegion().reconcileHosts(leftOverHosts);
+
         // now that we have correct region hierarchy, and devices are in their
         //  respective regions, we can compute synthetic links for each region.
         uiTopology.computeSynthLinks();
+    }
+
+    private void reconcileDevicesAndHostsWithRegion(Set<UiDevice> allDevices,
+                                                    Set<UiHost> allHosts,
+                                                    RegionId rid,
+                                                    UiRegion region) {
+        Set<DeviceId> deviceIds = services.region().getRegionDevices(rid);
+        Set<HostId> hostIds = new HashSet<>();
+        region.reconcileDevices(deviceIds);
+
+        deviceIds.forEach(devId -> {
+            UiDevice dev = uiTopology.findDevice(devId);
+            if (dev != null) {
+                dev.setRegionId(rid);
+                allDevices.remove(dev);
+            } else {
+                log.warn("Region device ID {} but no UiDevice in topology",
+                        devId);
+            }
+
+            Set<Host> hosts = services.host().getConnectedHosts(devId);
+            for (Host h : hosts) {
+                HostId hid = h.id();
+                hostIds.add(hid);
+                UiHost host = uiTopology.findHost(hid);
+
+                if (host != null) {
+                    host.setRegionId(rid);
+                    allHosts.remove(host);
+                } else {
+                    log.warn("Region host ID {} but no UiHost in topology",
+                            hid);
+                }
+            }
+        });
+
+        region.reconcileHosts(hostIds);
     }
 
 

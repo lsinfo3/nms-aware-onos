@@ -19,17 +19,35 @@ import io.netty.buffer.ByteBuf;
 import org.onosproject.lisp.msg.exceptions.LispParseError;
 import org.onosproject.lisp.msg.exceptions.LispReaderException;
 import org.onosproject.lisp.msg.exceptions.LispWriterException;
+import org.onosproject.lisp.msg.types.LispAppDataLcafAddress.AppDataLcafAddressReader;
+import org.onosproject.lisp.msg.types.LispAppDataLcafAddress.AppDataLcafAddressWriter;
+import org.onosproject.lisp.msg.types.LispListLcafAddress.ListLcafAddressReader;
+import org.onosproject.lisp.msg.types.LispListLcafAddress.ListLcafAddressWriter;
+import org.onosproject.lisp.msg.types.LispNatLcafAddress.NatLcafAddressReader;
+import org.onosproject.lisp.msg.types.LispNatLcafAddress.NatLcafAddressWriter;
+import org.onosproject.lisp.msg.types.LispSegmentLcafAddress.SegmentLcafAddressReader;
+import org.onosproject.lisp.msg.types.LispSegmentLcafAddress.SegmentLcafAddressWriter;
+import org.onosproject.lisp.msg.types.LispSourceDestLcafAddress.SourceDestLcafAddressReader;
+import org.onosproject.lisp.msg.types.LispSourceDestLcafAddress.SourceDestLcafAddressWriter;
+import org.onosproject.lisp.msg.types.LispTeLcafAddress.TeLcafAddressReader;
+import org.onosproject.lisp.msg.types.LispTeLcafAddress.TeLcafAddressWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.*;
+import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.APPLICATION_DATA;
+import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.LIST;
+import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.NAT;
+import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.SEGMENT;
+import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.SOURCE_DEST;
+import static org.onosproject.lisp.msg.types.LispCanonicalAddressFormatEnum.TRAFFIC_ENGINEERING;
+
 
 /**
  * LISP Canonical Address Formatted address class.
- *
+ * <p>
  * <pre>
  * {@literal
  *  0                   1                   2                   3
@@ -51,14 +69,19 @@ public class LispLcafAddress extends LispAfiAddress {
     private final byte flag;
     private final short length;
 
+    private static final int LCAF_AFI_CODE_BYTE_LENGTH = 2;
+
+    private static final int LENGTH_FIELD_INDEX = 7;
+    public static final int COMMON_HEADER_SIZE = 8;
+
     /**
      * Initializes LCAF address.
      *
-     * @param lcafType LCAF type
+     * @param lcafType  LCAF type
      * @param reserved1 reserved1 field
      * @param reserved2 reserved2 field
-     * @param flag flag field
-     * @param length length field
+     * @param flag      flag field
+     * @param length    length field
      */
     protected LispLcafAddress(LispCanonicalAddressFormatEnum lcafType,
                               byte reserved1, byte reserved2, byte flag, short length) {
@@ -73,10 +96,10 @@ public class LispLcafAddress extends LispAfiAddress {
     /**
      * Initializes LCAF address.
      *
-     * @param lcafType LCAF type
+     * @param lcafType  LCAF type
      * @param reserved2 reserved2 field
-     * @param flag flag field
-     * @param length length field
+     * @param flag      flag field
+     * @param length    length field
      */
     protected LispLcafAddress(LispCanonicalAddressFormatEnum lcafType,
                               byte reserved2, byte flag, short length) {
@@ -91,9 +114,9 @@ public class LispLcafAddress extends LispAfiAddress {
     /**
      * Initializes LCAF address.
      *
-     * @param lcafType LCAF type
+     * @param lcafType  LCAF type
      * @param reserved2 reserved2 field
-     * @param length length field
+     * @param length    length field
      */
     protected LispLcafAddress(LispCanonicalAddressFormatEnum lcafType,
                               byte reserved2, short length) {
@@ -108,7 +131,7 @@ public class LispLcafAddress extends LispAfiAddress {
     /**
      * Initializes LCAF address.
      *
-     * @param lcafType LCAF type
+     * @param lcafType  LCAF type
      * @param reserved2 reserved2 field
      */
     protected LispLcafAddress(LispCanonicalAddressFormatEnum lcafType, byte reserved2) {
@@ -124,7 +147,7 @@ public class LispLcafAddress extends LispAfiAddress {
      * Initializes LCAF address.
      *
      * @param lcafType LCAF type
-     * @param length length field
+     * @param length   length field
      */
     protected LispLcafAddress(LispCanonicalAddressFormatEnum lcafType, short length) {
         super(AddressFamilyIdentifierEnum.LCAF);
@@ -202,6 +225,10 @@ public class LispLcafAddress extends LispAfiAddress {
      */
     public static LispLcafAddress deserializeCommon(ByteBuf byteBuf) {
 
+        // let's skip first and second two bytes ,
+        // because it represents LCAF AFI code
+        byteBuf.skipBytes(LCAF_AFI_CODE_BYTE_LENGTH);
+
         // reserved1 -> 8 bits
         byte reserved1 = (byte) byteBuf.readUnsignedByte();
 
@@ -218,7 +245,21 @@ public class LispLcafAddress extends LispAfiAddress {
         short length = (short) byteBuf.readUnsignedShort();
 
         return new LispLcafAddress(LispCanonicalAddressFormatEnum.valueOf(lcafType),
-                                    reserved1, reserved2, flag, length);
+                reserved1, reserved2, flag, length);
+    }
+
+    /**
+     * Updates the header length field value based on the size of LISP header.
+     *
+     * @param lcafIndex the index of LCAF address, because LCAF address is
+     *                  contained inside LISP control message, so to correctly
+     *                  find the right LCAF length index, we need to know the
+     *                  absolute lcaf index inside LISP control message byte buf
+     * @param byteBuf   netty byte buffer
+     */
+    public static void updateLength(int lcafIndex, ByteBuf byteBuf) {
+        byteBuf.setByte(lcafIndex + LENGTH_FIELD_INDEX,
+                        byteBuf.writerIndex() - COMMON_HEADER_SIZE - lcafIndex);
     }
 
     /**
@@ -228,6 +269,8 @@ public class LispLcafAddress extends LispAfiAddress {
      * @param address LISP LCAF address instance
      */
     public static void serializeCommon(ByteBuf byteBuf, LispLcafAddress address) {
+
+        byteBuf.writeShort(AddressFamilyIdentifierEnum.LCAF.getIanaCode());
         byteBuf.writeByte(address.getReserved1());
         byteBuf.writeByte(address.getFlag());
         byteBuf.writeByte(address.getType().getLispCode());
@@ -249,10 +292,10 @@ public class LispLcafAddress extends LispAfiAddress {
         if (obj instanceof LispLcafAddress) {
             final LispLcafAddress other = (LispLcafAddress) obj;
             return Objects.equals(this.lcafType, other.lcafType) &&
-                   Objects.equals(this.reserved1, other.reserved1) &&
-                   Objects.equals(this.reserved2, other.reserved2) &&
-                   Objects.equals(this.flag, other.flag) &&
-                   Objects.equals(this.length, other.length);
+                    Objects.equals(this.reserved1, other.reserved1) &&
+                    Objects.equals(this.reserved2, other.reserved2) &&
+                    Objects.equals(this.flag, other.flag) &&
+                    Objects.equals(this.length, other.length);
         }
         return false;
     }
@@ -337,20 +380,23 @@ public class LispLcafAddress extends LispAfiAddress {
          * @return LispLcafAddress instance
          */
         public LispLcafAddress build() {
-            return new LispLcafAddress(LispCanonicalAddressFormatEnum.valueOf(lcafType),
-                                        reserved1, reserved2, flag, length);
+            return new LispLcafAddress(LispCanonicalAddressFormatEnum
+                                               .valueOf(lcafType),
+                                       reserved1, reserved2, flag, length);
         }
     }
 
     /**
      * LISP LCAF reader class.
      */
-    public static class LcafAddressReader implements LispAddressReader<LispLcafAddress> {
+    public static class LcafAddressReader
+            implements LispAddressReader<LispLcafAddress> {
 
         private static final int LCAF_TYPE_FIELD_INDEX = 4;
 
         @Override
-        public LispLcafAddress readFrom(ByteBuf byteBuf) throws LispParseError, LispReaderException {
+        public LispLcafAddress readFrom(ByteBuf byteBuf)
+                throws LispParseError, LispReaderException {
 
             int index = byteBuf.readerIndex();
 
@@ -358,19 +404,27 @@ public class LispLcafAddress extends LispAfiAddress {
             byte lcafType = (byte) byteBuf.getUnsignedByte(index + LCAF_TYPE_FIELD_INDEX);
 
             if (lcafType == APPLICATION_DATA.getLispCode()) {
-                return new LispAppDataLcafAddress.AppDataLcafAddressReader().readFrom(byteBuf);
+                return new AppDataLcafAddressReader().readFrom(byteBuf);
+            }
+
+            if (lcafType == NAT.getLispCode()) {
+                return new NatLcafAddressReader().readFrom(byteBuf);
             }
 
             if (lcafType == LIST.getLispCode()) {
-                return new LispListLcafAddress.ListLcafAddressReader().readFrom(byteBuf);
+                return new ListLcafAddressReader().readFrom(byteBuf);
             }
 
             if (lcafType == SEGMENT.getLispCode()) {
-                return new LispSegmentLcafAddress.SegmentLcafAddressReader().readFrom(byteBuf);
+                return new SegmentLcafAddressReader().readFrom(byteBuf);
             }
 
             if (lcafType == SOURCE_DEST.getLispCode()) {
-                return new LispSourceDestLcafAddress.SourceDestLcafAddressReader().readFrom(byteBuf);
+                return new SourceDestLcafAddressReader().readFrom(byteBuf);
+            }
+
+            if (lcafType == TRAFFIC_ENGINEERING.getLispCode()) {
+                return new TeLcafAddressReader().readFrom(byteBuf);
             }
 
             log.warn("Unsupported LCAF type, please specify a correct LCAF type");
@@ -382,26 +436,36 @@ public class LispLcafAddress extends LispAfiAddress {
     /**
      * LISP LCAF address writer class.
      */
-    public static class LcafAddressWriter implements LispAddressWriter<LispLcafAddress> {
+    public static class LcafAddressWriter
+            implements LispAddressWriter<LispLcafAddress> {
 
         @Override
-        public void writeTo(ByteBuf byteBuf, LispLcafAddress address) throws LispWriterException {
+        public void writeTo(ByteBuf byteBuf, LispLcafAddress address)
+                throws LispWriterException {
             switch (address.getType()) {
                 case APPLICATION_DATA:
-                    new LispAppDataLcafAddress.AppDataLcafAddressWriter().writeTo(byteBuf,
+                    new AppDataLcafAddressWriter().writeTo(byteBuf,
                             (LispAppDataLcafAddress) address);
                     break;
+                case NAT:
+                    new NatLcafAddressWriter().writeTo(byteBuf,
+                            (LispNatLcafAddress) address);
+                    break;
                 case LIST:
-                    new LispListLcafAddress.ListLcafAddressWriter().writeTo(byteBuf,
+                    new ListLcafAddressWriter().writeTo(byteBuf,
                             (LispListLcafAddress) address);
                     break;
                 case SEGMENT:
-                    new LispSegmentLcafAddress.SegmentLcafAddressWriter().writeTo(byteBuf,
+                    new SegmentLcafAddressWriter().writeTo(byteBuf,
                             (LispSegmentLcafAddress) address);
                     break;
                 case SOURCE_DEST:
-                    new LispSourceDestLcafAddress.SourceDestLcafAddressWriter().writeTo(byteBuf,
+                    new SourceDestLcafAddressWriter().writeTo(byteBuf,
                             (LispSourceDestLcafAddress) address);
+                    break;
+                case TRAFFIC_ENGINEERING:
+                    new TeLcafAddressWriter().writeTo(byteBuf,
+                            (LispTeLcafAddress) address);
                     break;
                 default:
                     log.warn("Unsupported LCAF type, please specify a correct LCAF type");

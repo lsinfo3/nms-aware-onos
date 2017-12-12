@@ -17,6 +17,7 @@ package org.onosproject.net.intent.impl.compiler;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.google.common.collect.ImmutableSet;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
@@ -25,6 +26,8 @@ import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.onosproject.net.DefaultAnnotations;
 import org.onosproject.net.DefaultLink;
 import org.onosproject.net.DefaultPath;
+import org.onosproject.net.DeviceId;
+import org.onosproject.net.FilteredConnectPoint;
 import org.onosproject.net.Host;
 import org.onosproject.net.Link;
 import org.onosproject.net.Path;
@@ -37,6 +40,8 @@ import org.onosproject.net.host.HostService;
 import org.onosproject.net.intent.Constraint;
 import org.onosproject.net.intent.HostToHostIntent;
 import org.onosproject.net.intent.Intent;
+import org.onosproject.net.intent.IntentCompilationException;
+import org.onosproject.net.intent.LinkCollectionIntent;
 import org.onosproject.net.intent.PathIntent;
 import org.onosproject.net.intent.constraint.AdvancedAnnotationConstraint;
 import org.onosproject.net.intent.constraint.AnnotationConstraint;
@@ -55,6 +60,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.onosproject.net.Link.Type.EDGE;
 import static org.onosproject.net.flow.DefaultTrafficSelector.builder;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -66,6 +72,8 @@ public class HostToHostIntentCompiler
         extends ConnectivityIntentCompiler<HostToHostIntent> {
 
     private final Logger log = getLogger(getClass());
+
+    private static final String DEVICE_ID_NOT_FOUND = "Didn't find device id in the link";
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected HostService hostService;
@@ -361,6 +369,7 @@ public class HostToHostIntentCompiler
 
         return PathIntent.builder()
                 .appId(intent.appId())
+                .key(intent.key())
                 .selector(selectorBuilder.build())
                 .treatment(intent.treatment())
                 .path(path)
@@ -369,7 +378,8 @@ public class HostToHostIntentCompiler
                 .build();
     }
 
-    private void invertSelector(TrafficSelector.Builder selectorBuilder, HostToHostIntent intent) {
+    private void invertSelector(TrafficSelector.Builder selectorBuilder, HostToHostIntent intent)
+    {
 
         // all criterions types defined for the intent selector
         Set<Criterion.Type> criterionTypes = intent.selector().criteria().stream()
@@ -377,29 +387,88 @@ public class HostToHostIntentCompiler
                 .collect(Collectors.toSet());
 
         // if the intent selector has an ip protocol criterion
-        if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.IP_PROTO))) {
+        if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.IP_PROTO)))
+        {
 
             // switch tcp/udp tpPort source and destination if present
-            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.TCP_SRC))) {
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.TCP_SRC)))
+            {
                 selectorBuilder.matchTcpDst(((TcpPortCriterion) intent.selector().getCriterion(Criterion.Type.TCP_SRC))
-                                .tcpPort());
+                        .tcpPort());
             }
 
-            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.TCP_DST))) {
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.TCP_DST)))
+            {
                 selectorBuilder.matchTcpSrc(((TcpPortCriterion) intent.selector().getCriterion(Criterion.Type.TCP_DST))
-                                .tcpPort());
+                        .tcpPort());
             }
 
-            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.UDP_SRC))) {
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.UDP_SRC)))
+            {
                 selectorBuilder.matchUdpDst(((UdpPortCriterion) intent.selector().getCriterion(Criterion.Type.UDP_SRC))
-                                .udpPort());
+                        .udpPort());
             }
 
-            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.UDP_SRC))) {
+            if (criterionTypes.stream().anyMatch(type -> type.equals(Criterion.Type.UDP_SRC)))
+            {
                 selectorBuilder.matchUdpSrc(((UdpPortCriterion) intent.selector().getCriterion(Criterion.Type.UDP_DST))
-                                .udpPort());
+                        .udpPort());
             }
         }
+    }
+
+    private FilteredConnectPoint getFilteredPointFromLink(Link link) {
+        FilteredConnectPoint filteredConnectPoint;
+        if (link.src().elementId() instanceof DeviceId) {
+            filteredConnectPoint = new FilteredConnectPoint(link.src());
+        } else if (link.dst().elementId() instanceof DeviceId) {
+            filteredConnectPoint = new FilteredConnectPoint(link.dst());
+        } else {
+            throw new IntentCompilationException(DEVICE_ID_NOT_FOUND);
+        }
+        return filteredConnectPoint;
+    }
+
+    private Intent createLinkCollectionIntent(Path path,
+                                             Host src,
+                                             Host dst,
+                                             HostToHostIntent intent) {
+        /*
+         * The path contains also the edge links, these are not necessary
+         * for the LinkCollectionIntent.
+         */
+        Set<Link> coreLinks = path.links()
+                .stream()
+                .filter(link -> !link.type().equals(EDGE))
+                .collect(Collectors.toSet());
+
+        Link ingressLink = path.links().get(0);
+        Link egressLink = path.links().get(path.links().size() - 1);
+
+        FilteredConnectPoint ingressPoint = getFilteredPointFromLink(ingressLink);
+        FilteredConnectPoint egressPoint = getFilteredPointFromLink(egressLink);
+
+        TrafficSelector selector = builder(intent.selector())
+                .matchEthSrc(src.mac())
+                .matchEthDst(dst.mac())
+                .build();
+
+        return LinkCollectionIntent.builder()
+                .key(intent.key())
+                .appId(intent.appId())
+                .selector(selector)
+                .treatment(intent.treatment())
+                .links(coreLinks)
+                .filteredIngressPoints(ImmutableSet.of(
+                        ingressPoint
+                ))
+                .filteredEgressPoints(ImmutableSet.of(
+                        egressPoint
+                ))
+                .applyTreatmentOnEgress(true)
+                .constraints(intent.constraints())
+                .priority(intent.priority())
+                .build();
     }
 
 }

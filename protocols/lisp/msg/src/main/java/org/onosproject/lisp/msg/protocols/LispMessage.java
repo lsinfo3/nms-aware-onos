@@ -16,6 +16,9 @@
 package org.onosproject.lisp.msg.protocols;
 
 import io.netty.buffer.ByteBuf;
+import org.onosproject.lisp.msg.exceptions.LispWriterException;
+
+import java.net.InetSocketAddress;
 
 /**
  * LISP message interface.
@@ -30,11 +33,29 @@ public interface LispMessage {
     LispType getType();
 
     /**
+     * Configures the sender's IP address with port number.
+     * Note that this information is used to make the UDP datagram packet.
+     *
+     * @param sender LISP message sender
+     */
+    void configSender(InetSocketAddress sender);
+
+    /**
+     * Obtains the sender's IP address with port number.
+     * Note that this information is used to make the UDP datagram packet.
+     *
+     * @return send's IP address with port number
+     */
+    InetSocketAddress getSender();
+
+    /**
      * Writes LISP message object into communication channel.
      *
      * @param byteBuf byte buffer
+     * @throws LispWriterException if the writing request is failed due to
+     * the lisp object cannot be written to the buffer.
      */
-    void writeTo(ByteBuf byteBuf);
+    void writeTo(ByteBuf byteBuf) throws LispWriterException;
 
     /**
      * Generates LISP message builder.

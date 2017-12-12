@@ -49,7 +49,7 @@ import com.google.common.base.Throwables;
  */
 public class DefaultConsistentMap<K, V> extends Synchronous<AsyncConsistentMap<K, V>> implements ConsistentMap<K, V> {
 
-    private static final int MAX_DELAY_BETWEEN_RETY_MILLS = 50;
+    private static final int MAX_DELAY_BETWEEN_RETRY_MILLS = 50;
     private final AsyncConsistentMap<K, V> asyncMap;
     private final long operationTimeoutMillis;
     private Map<K, V> javaMap;
@@ -86,6 +86,11 @@ public class DefaultConsistentMap<K, V> extends Synchronous<AsyncConsistentMap<K
     }
 
     @Override
+    public Versioned<V> getOrDefault(K key, V defaultValue) {
+        return complete(asyncMap.getOrDefault(key, defaultValue));
+    }
+
+    @Override
     public Versioned<V> computeIfAbsent(K key,
             Function<? super K, ? extends V> mappingFunction) {
         return computeIf(key, Objects::isNull, (k, v) -> mappingFunction.apply(k));
@@ -110,7 +115,7 @@ public class DefaultConsistentMap<K, V> extends Synchronous<AsyncConsistentMap<K
         return Tools.retryable(() -> complete(asyncMap.computeIf(key, condition, remappingFunction)),
                                ConcurrentModification.class,
                                Integer.MAX_VALUE,
-                               MAX_DELAY_BETWEEN_RETY_MILLS).get();
+                               MAX_DELAY_BETWEEN_RETRY_MILLS).get();
     }
 
     @Override

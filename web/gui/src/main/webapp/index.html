@@ -40,6 +40,7 @@
 
     <script src="tp/Chart.min.js"></script>
     <script src="tp/angular-chart.min.js"></script>
+    <script src="tp/lodash.min.js"></script>
 
     <!-- {INJECTED-USER-START} -->
     <!-- {INJECTED-USER-END} -->
@@ -82,6 +83,7 @@
     <script src="app/fw/widget/button.js"></script>
     <script src="app/fw/widget/tableBuilder.js"></script>
     <script src="app/fw/widget/chartBuilder.js"></script>
+    <script src="app/fw/widget/listBuilder.js"></script>
 
     <script src="app/fw/layer/layer.js"></script>
     <script src="app/fw/layer/panel.js"></script>
@@ -126,32 +128,49 @@
     <link rel="stylesheet" href="app/fw/widget/table-theme.css">
 
     <!-- Under development for Region support. -->
-    <script src="app/view/topo2/topo2.js"></script>
+    <!--<script src="app/view/topo2/topo2.js"></script>
     <script src="app/view/topo2/topo2Breadcrumb.js"></script>
     <script src="app/view/topo2/topo2Collection.js"></script>
     <script src="app/view/topo2/topo2D3.js"></script>
+    <script src="app/view/topo2/topo2Dialog.js"></script>
+    <script src="app/view/topo2/topo2DetailsPanel.js"></script>
     <script src="app/view/topo2/topo2Device.js"></script>
+    <script src="app/view/topo2/topo2DeviceDetailsPanel.js"></script>
     <script src="app/view/topo2/topo2Event.js"></script>
     <script src="app/view/topo2/topo2Force.js"></script>
     <script src="app/view/topo2/topo2Host.js"></script>
+    <script src="app/view/topo2/topo2HostsPanel.js"></script>
     <script src="app/view/topo2/topo2Instance.js"></script>
+    <script src="app/view/topo2/topo2KeyCommands.js"></script>
     <script src="app/view/topo2/topo2Layout.js"></script>
     <script src="app/view/topo2/topo2Link.js"></script>
+    <script src="app/view/topo2/topo2LinkPanel.js"></script>
+    <script src="app/view/topo2/topo2Map.js"></script>
+    <script src="app/view/topo2/topo2MapCountryFilters.js"></script>
+    <script src="app/view/topo2/topo2MapConfig.js"></script>
+    <script src="app/view/topo2/topo2MapDialog.js"></script>
     <script src="app/view/topo2/topo2Model.js"></script>
     <script src="app/view/topo2/topo2NodeModel.js"></script>
+    <script src="app/view/topo2/topo2NodePosition.js"></script>
+    <script src="app/view/topo2/topo2Panel.js"></script>
+    <script src="app/view/topo2/topo2Prefs.js"></script>
     <script src="app/view/topo2/topo2Region.js"></script>
     <script src="app/view/topo2/topo2Select.js"></script>
+    <script src="app/view/topo2/topo2SummaryPanel.js"></script>
     <script src="app/view/topo2/topo2SubRegion.js"></script>
+    <script src="app/view/topo2/topo2SubRegionPanel.js"></script>
     <script src="app/view/topo2/topo2Theme.js"></script>
     <script src="app/view/topo2/topo2View.js"></script>
+    <script src="app/view/topo2/topo2Zoom.js"></script>
+    <script src="app/view/topo2/uiView.js"></script>
     <link rel="stylesheet" href="app/view/topo2/topo2.css">
-    <link rel="stylesheet" href="app/view/topo2/topo2-theme.css">
+    <link rel="stylesheet" href="app/view/topo2/topo2-theme.css">-->
 
-    <script src="app/view/topoX/topoX.js"></script>
+    <!-- <script src="app/view/topoX/topoX.js"></script>
     <script src="app/view/topoX/topoXEvent.js"></script>
     <script src="app/view/topoX/topoXForce.js"></script>
     <link rel="stylesheet" href="app/view/topoX/topoX.css">
-    <link rel="stylesheet" href="app/view/topoX/topoX-theme.css">
+    <link rel="stylesheet" href="app/view/topoX/topoX-theme.css">-->
 
     <!-- Builtin views javascript. -->
     <script src="app/view/topo/topo.js"></script>
@@ -232,7 +251,6 @@
          ng-controller="NavCtrl as navCtrl"
          ng-include="'nav.html'"></div>
 
-    <div id="breadcrumbs"></div>
     <div id="floatpanels"></div>
     <div id="alerts"></div>
     <div id="tooltip"></div>

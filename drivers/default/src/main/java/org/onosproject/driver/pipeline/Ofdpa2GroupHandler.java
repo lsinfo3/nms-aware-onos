@@ -37,6 +37,7 @@ import org.onosproject.net.flow.DefaultTrafficTreatment;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flow.criteria.Criterion;
+import org.onosproject.net.flow.criteria.TunnelIdCriterion;
 import org.onosproject.net.flow.criteria.VlanIdCriterion;
 import org.onosproject.net.flow.instructions.Instruction;
 import org.onosproject.net.flow.instructions.Instructions;
@@ -64,6 +65,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -76,6 +78,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.onlab.util.Tools.groupedThreads;
+import static org.onosproject.driver.pipeline.Ofdpa2GroupHandler.OfdpaMplsGroupSubType.OFDPA_GROUP_TYPE_SHIFT;
+import static org.onosproject.driver.pipeline.Ofdpa2GroupHandler.OfdpaMplsGroupSubType.OFDPA_MPLS_SUBTYPE_SHIFT;
+import static org.onosproject.driver.pipeline.Ofdpa2Pipeline.isNotMplsBos;
+import static org.onosproject.net.flow.criteria.Criterion.Type.TUNNEL_ID;
+import static org.onosproject.net.flow.criteria.Criterion.Type.VLAN_VID;
+import static org.onosproject.net.flowobjective.NextObjective.Type.HASHED;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -125,7 +133,8 @@ public class Ofdpa2GroupHandler {
 
     // local store for pending bucketAdds - by design there can only be one
     // pending bucket for a group
-    protected ConcurrentHashMap<Integer, NextObjective> pendingBuckets = new ConcurrentHashMap<>();
+    protected ConcurrentHashMap<Integer, NextObjective> pendingBuckets =
+            new ConcurrentHashMap<>();
 
     protected void init(DeviceId deviceId, PipelinerContext context) {
         this.deviceId = deviceId;
@@ -161,6 +170,29 @@ public class Ofdpa2GroupHandler {
         groupService.addListener(new InnerGroupListener());
     }
 
+    /**
+     * The purpose of this function is to verify if the hashed next
+     * objective is supported by the current pipeline.
+     *
+     * @param nextObjective the hashed objective to verify
+     * @return true if the hashed objective is supported. Otherwise false.
+     */
+    public boolean verifyHashedNextObjective(NextObjective nextObjective) {
+        // if it is not hashed, there is something wrong;
+        if (nextObjective.type() != HASHED) {
+            return false;
+        }
+        // The case non supported is the MPLS-ECMP. For now, we try
+        // to create a MPLS-ECMP for the transport of a VPWS. The
+        // necessary info are contained in the meta selector. In particular
+        // we are looking for the case of BoS==False;
+        TrafficSelector metaSelector = nextObjective.meta();
+        if (metaSelector != null && isNotMplsBos(metaSelector)) {
+            return false;
+        }
+        return true;
+    }
+
     //////////////////////////////////////
     //  Group Creation
     //////////////////////////////////////
@@ -182,6 +214,12 @@ public class Ofdpa2GroupHandler {
                 processBroadcastNextObjective(nextObjective);
                 break;
             case HASHED:
+                if (!verifyHashedNextObjective(nextObjective)) {
+                    log.error("Next Objectives of type hashed not supported. Next Objective Id:{}",
+                              nextObjective.id());
+                    Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.BADPARAMS);
+                    return;
+                }
                 processHashedNextObjective(nextObjective);
                 break;
             case FAILOVER:
@@ -224,29 +262,49 @@ public class Ofdpa2GroupHandler {
             return;
         }
 
-        // break up simple next objective to GroupChain objects
-        GroupInfo groupInfo = createL2L3Chain(treatment, nextObj.id(),
-                                              nextObj.appId(), false,
-                                              nextObj.meta());
-        if (groupInfo == null) {
-            log.error("Could not process nextObj={} in dev:{}", nextObj.id(), deviceId);
-            return;
+        boolean isMpls = false;
+        // In order to understand if it is a pseudo wire related
+        // next objective we look for the tunnel id in the meta.
+        boolean isPw = false;
+        if (nextObj.meta() != null) {
+            isMpls = isNotMplsBos(nextObj.meta());
+            TunnelIdCriterion tunnelIdCriterion = (TunnelIdCriterion) nextObj
+                    .meta()
+                    .getCriterion(TUNNEL_ID);
+            if (tunnelIdCriterion != null) {
+                isPw = true;
+            }
         }
-        // create object for local and distributed storage
-        Deque<GroupKey> gkeyChain = new ArrayDeque<>();
-        gkeyChain.addFirst(groupInfo.innerMostGroupDesc.appCookie());
-        gkeyChain.addFirst(groupInfo.nextGroupDesc.appCookie());
-        OfdpaNextGroup ofdpaGrp = new OfdpaNextGroup(
-                Collections.singletonList(gkeyChain),
-                nextObj);
 
-        // store l3groupkey with the ofdpaNextGroup for the nextObjective that depends on it
-        updatePendingNextObjective(groupInfo.nextGroupDesc.appCookie(), ofdpaGrp);
+        if (!isPw) {
+            // break up simple next objective to GroupChain objects
+            GroupInfo groupInfo = createL2L3Chain(treatment, nextObj.id(),
+                                                  nextObj.appId(), isMpls,
+                                                  nextObj.meta());
+            if (groupInfo == null) {
+                log.error("Could not process nextObj={} in dev:{}", nextObj.id(), deviceId);
+                return;
+            }
+            // create object for local and distributed storage
+            Deque<GroupKey> gkeyChain = new ArrayDeque<>();
+            gkeyChain.addFirst(groupInfo.innerMostGroupDesc.appCookie());
+            gkeyChain.addFirst(groupInfo.nextGroupDesc.appCookie());
+            OfdpaNextGroup ofdpaGrp =
+                    new OfdpaNextGroup(Collections.singletonList(gkeyChain), nextObj);
 
-        // now we are ready to send the l2 groupDescription (inner), as all the stores
-        // that will get async replies have been updated. By waiting to update
-        // the stores, we prevent nasty race conditions.
-        groupService.addGroup(groupInfo.innerMostGroupDesc);
+            // store l3groupkey with the ofdpaNextGroup for the nextObjective that depends on it
+            updatePendingNextObjective(groupInfo.nextGroupDesc.appCookie(), ofdpaGrp);
+
+            // now we are ready to send the l2 groupDescription (inner), as all the stores
+            // that will get async replies have been updated. By waiting to update
+            // the stores, we prevent nasty race conditions.
+            groupService.addGroup(groupInfo.innerMostGroupDesc);
+        } else {
+            // We handle the pseudo wire with a different a procedure.
+            // This procedure is meant to handle both initiation and
+            // termination of the pseudo wire.
+            processPwNextObjective(nextObj);
+        }
     }
 
     /**
@@ -299,8 +357,33 @@ public class Ofdpa2GroupHandler {
      *         error in processing the chain
      */
     protected GroupInfo createL2L3Chain(TrafficTreatment treatment, int nextId,
-                                      ApplicationId appId, boolean mpls,
-                                      TrafficSelector meta) {
+                                        ApplicationId appId, boolean mpls,
+                                        TrafficSelector meta) {
+        return createL2L3ChainInternal(treatment, nextId, appId, mpls, meta, true);
+    }
+
+    /**
+     * Internal implementation of createL2L3Chain.
+     * <p>
+     * The is_present bit in set_vlan_vid action is required to be 0 in OFDPA i12.
+     * Since it is non-OF spec, we need an extension treatment for that.
+     * The useSetVlanExtension must be set to false for OFDPA i12.
+     * </p>
+     *
+     * @param treatment that needs to be broken up to create the group chain
+     * @param nextId of the next objective that needs this group chain
+     * @param appId of the application that sent this next objective
+     * @param mpls determines if L3Unicast or MPLSInterface group is created
+     * @param meta metadata passed in by the application as part of the nextObjective
+     * @param useSetVlanExtension use the setVlanVid extension that has is_present bit set to 0.
+     * @return GroupInfo containing the GroupDescription of the
+     *         L2Interface group(inner) and the GroupDescription of the (outer)
+     *         L3Unicast/MPLSInterface group. May return null if there is an
+     *         error in processing the chain
+     */
+    protected GroupInfo createL2L3ChainInternal(TrafficTreatment treatment, int nextId,
+                                                ApplicationId appId, boolean mpls,
+                                                TrafficSelector meta, boolean useSetVlanExtension) {
         // for the l2interface group, get vlan and port info
         // for the outer group, get the src/dst mac, and vlan info
         TrafficTreatment.Builder outerTtb = DefaultTrafficTreatment.builder();
@@ -324,8 +407,12 @@ public class Ofdpa2GroupHandler {
                         break;
                     case VLAN_ID:
                         vlanid = ((L2ModificationInstruction.ModVlanIdInstruction) l2ins).vlanId();
-                        OfdpaSetVlanVid ofdpaSetVlanVid = new OfdpaSetVlanVid(vlanid);
-                        outerTtb.extension(ofdpaSetVlanVid, deviceId);
+                        if (useSetVlanExtension) {
+                            OfdpaSetVlanVid ofdpaSetVlanVid = new OfdpaSetVlanVid(vlanid);
+                            outerTtb.extension(ofdpaSetVlanVid, deviceId);
+                        } else {
+                            outerTtb.setVlanId(vlanid);
+                        }
                         setVlan = true;
                         break;
                     case VLAN_POP:
@@ -352,14 +439,18 @@ public class Ofdpa2GroupHandler {
 
         if (vlanid == null && meta != null) {
             // use metadata if available
-            Criterion vidCriterion = meta.getCriterion(Criterion.Type.VLAN_VID);
+            Criterion vidCriterion = meta.getCriterion(VLAN_VID);
             if (vidCriterion != null) {
                 vlanid = ((VlanIdCriterion) vidCriterion).vlanId();
             }
             // if vlan is not set, use the vlan in metadata for outerTtb
             if (vlanid != null && !setVlan) {
-                OfdpaSetVlanVid ofdpaSetVlanVid = new OfdpaSetVlanVid(vlanid);
-                outerTtb.extension(ofdpaSetVlanVid, deviceId);
+                if (useSetVlanExtension) {
+                    OfdpaSetVlanVid ofdpaSetVlanVid = new OfdpaSetVlanVid(vlanid);
+                    outerTtb.extension(ofdpaSetVlanVid, deviceId);
+                } else {
+                    outerTtb.setVlanId(vlanid);
+                }
             }
         }
 
@@ -461,7 +552,7 @@ public class Ofdpa2GroupHandler {
      * As per the OFDPA 2.0 TTP, packets are sent out of ports by using
      * a chain of groups. The broadcast Next Objective passed in by the application
      * has to be broken up into a group chain comprising of an
-     * L2 Flood group whose buckets point to L2 Interface groups.
+     * L2 Flood group or L3 Multicast group, whose buckets point to L2 Interface groups.
      *
      * @param nextObj  the nextObjective of type BROADCAST
      */
@@ -489,7 +580,8 @@ public class Ofdpa2GroupHandler {
         }
     }
 
-    private List<GroupInfo> prepareL2InterfaceGroup(NextObjective nextObj, VlanId assignedVlan) {
+    private List<GroupInfo> prepareL2InterfaceGroup(NextObjective nextObj,
+                                                    VlanId assignedVlan) {
         ImmutableList.Builder<GroupInfo> groupInfoBuilder = ImmutableList.builder();
 
         // break up broadcast next objective to multiple groups
@@ -555,12 +647,14 @@ public class Ofdpa2GroupHandler {
         return groupInfoBuilder.build();
     }
 
-    private void createL2FloodGroup(NextObjective nextObj, VlanId vlanId, List<GroupInfo> groupInfos) {
-        // assemble info for l2 flood group
-        // since there can be only one flood group for a vlan, its index is always the same - 0
+    private void createL2FloodGroup(NextObjective nextObj, VlanId vlanId,
+                                    List<GroupInfo> groupInfos) {
+        // assemble info for l2 flood group. Since there can be only one flood
+        // group for a vlan, its index is always the same - 0
         Integer l2floodgroupId = L2_FLOOD_TYPE | (vlanId.toShort() << 16);
         int l2floodgk = getNextAvailableIndex();
-        final GroupKey l2floodgroupkey = new DefaultGroupKey(Ofdpa2Pipeline.appKryo.serialize(l2floodgk));
+        final GroupKey l2floodgroupkey =
+                new DefaultGroupKey(Ofdpa2Pipeline.appKryo.serialize(l2floodgk));
 
         // collection of group buckets pointing to all the l2 interface groups
         List<GroupBucket> l2floodBuckets = Lists.newArrayList();
@@ -609,7 +703,8 @@ public class Ofdpa2GroupHandler {
         });
     }
 
-    private void createL3MulticastGroup(NextObjective nextObj, VlanId vlanId, List<GroupInfo> groupInfos) {
+    private void createL3MulticastGroup(NextObjective nextObj, VlanId vlanId,
+                                        List<GroupInfo> groupInfos) {
         List<GroupBucket> l3McastBuckets = new ArrayList<>();
         groupInfos.forEach(groupInfo -> {
             // Points to L3 interface group if there is one.
@@ -623,8 +718,10 @@ public class Ofdpa2GroupHandler {
         });
 
         int l3MulticastIndex = getNextAvailableIndex();
-        int l3MulticastGroupId = L3_MULTICAST_TYPE | vlanId.toShort() << 16 | (TYPE_VLAN_MASK & l3MulticastIndex);
-        final GroupKey l3MulticastGroupKey = new DefaultGroupKey(Ofdpa2Pipeline.appKryo.serialize(l3MulticastIndex));
+        int l3MulticastGroupId = L3_MULTICAST_TYPE |
+                vlanId.toShort() << 16 | (TYPE_VLAN_MASK & l3MulticastIndex);
+        final GroupKey l3MulticastGroupKey =
+                new DefaultGroupKey(Ofdpa2Pipeline.appKryo.serialize(l3MulticastIndex));
 
         GroupDescription l3MulticastGroupDesc = new DefaultGroupDescription(deviceId,
                 GroupDescription.Type.ALL,
@@ -683,7 +780,7 @@ public class Ofdpa2GroupHandler {
      *
      * @param nextObj  the nextObjective of type HASHED
      */
-    private void processHashedNextObjective(NextObjective nextObj) {
+    protected void processHashedNextObjective(NextObjective nextObj) {
         // storage for all group keys in the chain of groups created
         List<Deque<GroupKey>> allGroupKeys = new ArrayList<>();
         List<GroupInfo> unsentGroups = new ArrayList<>();
@@ -749,7 +846,7 @@ public class Ofdpa2GroupHandler {
      * @param allGroupKeys  a list to store groupKey for each bucket-group-chain
      * @param unsentGroups  a list to store GroupInfo for each bucket-group-chain
      */
-    private void createHashBucketChains(NextObjective nextObj,
+    protected void createHashBucketChains(NextObjective nextObj,
                                         List<Deque<GroupKey>> allGroupKeys,
                                         List<GroupInfo> unsentGroups) {
         // break up hashed next objective to multiple groups
@@ -776,9 +873,23 @@ public class Ofdpa2GroupHandler {
             Deque<GroupKey> gkeyChain = new ArrayDeque<>();
             // XXX we only deal with 0 and 1 label push right now
             if (labelsPushed == 0) {
-                GroupInfo nolabelGroupInfo = createL2L3Chain(bucket, nextObj.id(),
-                        nextObj.appId(), false,
-                        nextObj.meta());
+                GroupInfo nolabelGroupInfo;
+                TrafficSelector metaSelector = nextObj.meta();
+                if (metaSelector != null) {
+                    if (isNotMplsBos(metaSelector)) {
+                        nolabelGroupInfo = createL2L3Chain(bucket, nextObj.id(),
+                                        nextObj.appId(), true,
+                                        nextObj.meta());
+                    } else {
+                        nolabelGroupInfo = createL2L3Chain(bucket, nextObj.id(),
+                                        nextObj.appId(), false,
+                                        nextObj.meta());
+                    }
+                } else {
+                    nolabelGroupInfo = createL2L3Chain(bucket, nextObj.id(),
+                                    nextObj.appId(), false,
+                                    nextObj.meta());
+                }
                 if (nolabelGroupInfo == null) {
                     log.error("Could not process nextObj={} in dev:{}",
                             nextObj.id(), deviceId);
@@ -852,43 +963,99 @@ public class Ofdpa2GroupHandler {
         }
     }
 
+    /**
+     * Processes the pseudo wire related next objective.
+     * This procedure try to reuse the mpls label groups,
+     * the mpls interface group and the l2 interface group.
+     *
+     * @param nextObjective the objective to process.
+     */
+    protected void processPwNextObjective(NextObjective nextObjective) {
+        log.warn("Pseudo wire extensions are not support for the OFDPA 2.0 {}", nextObjective.id());
+        return;
+    }
+
     //////////////////////////////////////
     //  Group Editing
     //////////////////////////////////////
 
     /**
      *  Adds a bucket to the top level group of a group-chain, and creates the chain.
+     *  Ensures that bucket being added is not a duplicate, by checking existing
+     *  buckets for the same outport.
      *
-     * @param nextObjective the next group to add a bucket to
+     * @param nextObjective the bucket information for a next group
      * @param next the representation of the existing group-chain for this next objective
      */
     protected void addBucketToGroup(NextObjective nextObjective, NextGroup next) {
-        if (nextObjective.type() != NextObjective.Type.HASHED) {
+        if (nextObjective.type() != NextObjective.Type.HASHED &&
+                nextObjective.type() != NextObjective.Type.BROADCAST) {
             log.warn("AddBuckets not applied to nextType:{} in dev:{} for next:{}",
                     nextObjective.type(), deviceId, nextObjective.id());
+            Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.UNSUPPORTED);
             return;
         }
         if (nextObjective.next().size() > 1) {
+            // FIXME - support editing multiple buckets CORD-555
             log.warn("Only one bucket can be added at a time");
+            Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.UNSUPPORTED);
             return;
         }
+        // first check to see if bucket being added is not a duplicate of an
+        // existing bucket. If it is for an existing outport, then its a duplicate.
+        Set<PortNumber> existingOutPorts = new HashSet<>();
+        List<Deque<GroupKey>> allActiveKeys = Ofdpa2Pipeline.appKryo.deserialize(next.data());
+        for (Deque<GroupKey> gkeys : allActiveKeys) {
+            // get the last group for the outport
+            Group glast = groupService.getGroup(deviceId, gkeys.peekLast());
+            if (glast != null && !glast.buckets().buckets().isEmpty()) {
+                PortNumber op = readOutPortFromTreatment(
+                                    glast.buckets().buckets().get(0).treatment());
+                if (op != null) {
+                    existingOutPorts.add(op);
+                }
+            }
+        }
+        // only a single bucket being added
+        TrafficTreatment tt = nextObjective.next().iterator().next();
+        PortNumber newport = readOutPortFromTreatment(tt);
+        if (existingOutPorts.contains(newport)) {
+            log.info("Attempt to add bucket for existing outport:{} in dev:{} for next:{}",
+                     newport, deviceId, nextObjective.id());
+            return;
+        }
+        if (nextObjective.type() == NextObjective.Type.HASHED) {
+            addBucketToHashGroup(nextObjective, allActiveKeys, newport);
+        } else if (nextObjective.type() == NextObjective.Type.BROADCAST) {
+            addBucketToBroadcastGroup(nextObjective, allActiveKeys, newport);
+        }
+    }
+
+    private void addBucketToHashGroup(NextObjective nextObjective,
+                                      List<Deque<GroupKey>> allActiveKeys,
+                                      PortNumber newport) {
         // storage for all group keys in the chain of groups created
         List<Deque<GroupKey>> allGroupKeys = new ArrayList<>();
         List<GroupInfo> unsentGroups = new ArrayList<>();
         createHashBucketChains(nextObjective, allGroupKeys, unsentGroups);
 
-        // now we can create the outermost L3 ECMP group bucket to add
+        // now we can create the bucket to add to the outermost L3 ECMP group
         GroupInfo gi = unsentGroups.get(0); // only one bucket, so only one group-chain
         TrafficTreatment.Builder ttb = DefaultTrafficTreatment.builder();
         ttb.group(new DefaultGroupId(gi.nextGroupDesc.givenGroupId()));
         GroupBucket sbucket = DefaultGroupBucket.createSelectGroupBucket(ttb.build());
 
-        // recreate the original L3 ECMP group id and description
-        int l3ecmpGroupId = L3_ECMP_TYPE | nextObjective.id() << 12;
-        GroupKey l3ecmpGroupKey = new DefaultGroupKey(Ofdpa2Pipeline.appKryo.serialize(l3ecmpGroupId));
+        // retrieve the original L3 ECMP group
+        Group l3ecmpGroup = retrieveTopLevelGroup(allActiveKeys, nextObjective.id());
+        if (l3ecmpGroup == null) {
+            Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.GROUPMISSING);
+            return;
+        }
+        GroupKey l3ecmpGroupKey = l3ecmpGroup.appCookie();
+        int l3ecmpGroupId = l3ecmpGroup.id().id();
 
         // Although GroupDescriptions are not necessary for adding buckets to
-        // existing groups, we use one in the GroupChainElem. When the latter is
+        // existing groups, we still use one in the GroupChainElem. When the latter is
         // processed, the info will be extracted for the bucketAdd call to groupService
         GroupDescription l3ecmpGroupDesc =
                 new DefaultGroupDescription(
@@ -901,14 +1068,16 @@ public class Ofdpa2GroupHandler {
         GroupChainElem l3ecmpGce = new GroupChainElem(l3ecmpGroupDesc, 1, true);
 
         // update original NextGroup with new bucket-chain
-        // don't need to update pendingNextObjectives -- group already exists
+        // If active keys shows only the top-level group without a chain of groups,
+        // then it represents an empty group. Update by replacing empty chain.
         Deque<GroupKey> newBucketChain = allGroupKeys.get(0);
         newBucketChain.addFirst(l3ecmpGroupKey);
-        List<Deque<GroupKey>> allOriginalKeys = Ofdpa2Pipeline.appKryo.deserialize(next.data());
-        allOriginalKeys.add(newBucketChain);
-        flowObjectiveStore.putNextGroup(nextObjective.id(),
-                new OfdpaNextGroup(allOriginalKeys, nextObjective));
-
+        if (allActiveKeys.size() == 1 && allActiveKeys.get(0).size() == 1) {
+            allActiveKeys.clear();
+        }
+        allActiveKeys.add(newBucketChain);
+        updatePendingNextObjective(l3ecmpGroupKey,
+                                   new OfdpaNextGroup(allActiveKeys, nextObjective));
         log.debug("Adding to L3ECMP: device:{} gid:{} gkey:{} nextId:{}",
                 deviceId, Integer.toHexString(l3ecmpGroupId),
                 l3ecmpGroupKey, nextObjective.id());
@@ -917,99 +1086,276 @@ public class Ofdpa2GroupHandler {
                 Integer.toHexString(gi.innerMostGroupDesc.givenGroupId()), deviceId);
         updatePendingGroups(gi.nextGroupDesc.appCookie(), l3ecmpGce);
         groupService.addGroup(gi.innerMostGroupDesc);
+    }
 
+    private void addBucketToBroadcastGroup(NextObjective nextObj,
+                                        List<Deque<GroupKey>> allActiveKeys,
+                                        PortNumber newport) {
+        VlanId assignedVlan = Ofdpa2Pipeline.readVlanFromSelector(nextObj.meta());
+        if (assignedVlan == null) {
+            log.warn("VLAN ID required by broadcast next obj is missing. "
+                    + "Aborting add bucket to broadcast group for next:{} in dev:{}",
+                    nextObj.id(), deviceId);
+            Ofdpa2Pipeline.fail(nextObj, ObjectiveError.BADPARAMS);
+            return;
+        }
+
+        List<GroupInfo> groupInfos = prepareL2InterfaceGroup(nextObj, assignedVlan);
+
+        IpPrefix ipDst = Ofdpa2Pipeline.readIpDstFromSelector(nextObj.meta());
+        if (ipDst != null) {
+            if (ipDst.isMulticast()) {
+                addBucketToL3MulticastGroup(nextObj, allActiveKeys,
+                                            groupInfos, assignedVlan, newport);
+            } else {
+                log.warn("Broadcast NextObj with non-multicast IP address {}", nextObj);
+                Ofdpa2Pipeline.fail(nextObj, ObjectiveError.BADPARAMS);
+                return;
+            }
+        } else {
+            addBucketToL2FloodGroup(nextObj, allActiveKeys,
+                                    groupInfos, assignedVlan, newport);
+        }
+    }
+
+    private void addBucketToL2FloodGroup(NextObjective nextObj,
+                                         List<Deque<GroupKey>> allActiveKeys,
+                                         List<GroupInfo> groupInfos,
+                                         VlanId assignedVlan,
+                                         PortNumber newport) {
+        // create the bucket to add to the outermost L2 Flood group
+        GroupInfo groupInfo = groupInfos.get(0); // only one bucket to add
+        GroupDescription l2intGrpDesc = groupInfo.nextGroupDesc;
+        TrafficTreatment.Builder ttb = DefaultTrafficTreatment.builder();
+        ttb.group(new DefaultGroupId(l2intGrpDesc.givenGroupId()));
+        GroupBucket abucket = DefaultGroupBucket.createAllGroupBucket(ttb.build());
+        // get the group being edited
+        Group l2floodGroup = retrieveTopLevelGroup(allActiveKeys, nextObj.id());
+        if (l2floodGroup == null) {
+            Ofdpa2Pipeline.fail(nextObj, ObjectiveError.GROUPMISSING);
+            return;
+        }
+        GroupKey l2floodGroupKey = l2floodGroup.appCookie();
+        int l2floodGroupId = l2floodGroup.id().id();
+
+        //ensure assignedVlan applies to the chosen group
+        VlanId expectedVlan = VlanId.vlanId((short) ((l2floodGroupId & 0x0fff0000) >> 16));
+        if (!expectedVlan.equals(assignedVlan)) {
+            log.warn("VLAN ID {} does not match Flood group {} to which bucket is "
+                    + "being added, for next:{} in dev:{}. Abort.", assignedVlan,
+                    Integer.toHexString(l2floodGroupId), nextObj.id(), deviceId);
+            Ofdpa2Pipeline.fail(nextObj, ObjectiveError.BADPARAMS);
+        }
+        GroupDescription l2floodGroupDescription =
+                new DefaultGroupDescription(
+                        deviceId,
+                        GroupDescription.Type.ALL,
+                        new GroupBuckets(Collections.singletonList(abucket)),
+                        l2floodGroupKey,
+                        l2floodGroupId,
+                        nextObj.appId());
+        GroupChainElem l2floodGce = new GroupChainElem(l2floodGroupDescription, 1, true);
+
+        // update original NextGroup with new bucket-chain
+        // If active keys shows only the top-level group without a chain of groups,
+        // then it represents an empty group. Update by replacing empty chain.
+        Deque<GroupKey> newBucketChain = new ArrayDeque<>();
+        newBucketChain.addFirst(groupInfo.nextGroupDesc.appCookie());
+        newBucketChain.addFirst(l2floodGroupKey);
+        if (allActiveKeys.size() == 1 && allActiveKeys.get(0).size() == 1) {
+            allActiveKeys.clear();
+        }
+        allActiveKeys.add(newBucketChain);
+        updatePendingNextObjective(l2floodGroupKey,
+                                   new OfdpaNextGroup(allActiveKeys, nextObj));
+        log.debug("Adding to L2FLOOD: device:{} gid:{} gkey:{} nextId:{}",
+                  deviceId, Integer.toHexString(l2floodGroupId),
+                  l2floodGroupKey, nextObj.id());
+        // send the innermost group
+        log.debug("Sending innermost group {} in group chain on device {} ",
+                Integer.toHexString(groupInfo.innerMostGroupDesc.givenGroupId()),
+                deviceId);
+        updatePendingGroups(groupInfo.nextGroupDesc.appCookie(), l2floodGce);
+        groupService.addGroup(groupInfo.innerMostGroupDesc);
+    }
+
+    private void addBucketToL3MulticastGroup(NextObjective nextObj,
+                                             List<Deque<GroupKey>> allActiveKeys,
+                                             List<GroupInfo> groupInfos,
+                                             VlanId assignedVlan,
+                                             PortNumber newport) {
+        // create the bucket to add to the outermost L3 Multicast group
+        GroupInfo groupInfo = groupInfos.get(0); // only one bucket to add
+        // Points to L3 interface group if there is one.
+        // Otherwise points to L2 interface group directly.
+        GroupDescription nextGroupDesc = (groupInfo.nextGroupDesc != null) ?
+                groupInfo.nextGroupDesc : groupInfo.innerMostGroupDesc;
+        TrafficTreatment.Builder ttb = DefaultTrafficTreatment.builder();
+        ttb.group(new DefaultGroupId(nextGroupDesc.givenGroupId()));
+        GroupBucket abucket = DefaultGroupBucket.createAllGroupBucket(ttb.build());
+
+        // get the group being edited
+        Group l3mcastGroup = retrieveTopLevelGroup(allActiveKeys, nextObj.id());
+        if (l3mcastGroup == null) {
+            Ofdpa2Pipeline.fail(nextObj, ObjectiveError.GROUPMISSING);
+            return;
+        }
+        GroupKey l3mcastGroupKey = l3mcastGroup.appCookie();
+        int l3mcastGroupId = l3mcastGroup.id().id();
+
+        //ensure assignedVlan applies to the chosen group
+        VlanId expectedVlan = VlanId.vlanId((short) ((l3mcastGroupId & 0x0fff0000) >> 16));
+        if (!expectedVlan.equals(assignedVlan)) {
+            log.warn("VLAN ID {} does not match L3 Mcast group {} to which bucket is "
+                    + "being added, for next:{} in dev:{}. Abort.", assignedVlan,
+                    Integer.toHexString(l3mcastGroupId), nextObj.id(), deviceId);
+            Ofdpa2Pipeline.fail(nextObj, ObjectiveError.BADPARAMS);
+        }
+        GroupDescription l3mcastGroupDescription =
+                new DefaultGroupDescription(
+                        deviceId,
+                        GroupDescription.Type.ALL,
+                        new GroupBuckets(Collections.singletonList(abucket)),
+                        l3mcastGroupKey,
+                        l3mcastGroupId,
+                        nextObj.appId());
+        GroupChainElem l3mcastGce = new GroupChainElem(l3mcastGroupDescription,
+                                                       1, true);
+
+        // update original NextGroup with new bucket-chain
+        Deque<GroupKey> newBucketChain = new ArrayDeque<>();
+        newBucketChain.addFirst(groupInfo.innerMostGroupDesc.appCookie());
+        // Add L3 interface group to the chain if there is one.
+        if (!groupInfo.nextGroupDesc.equals(groupInfo.innerMostGroupDesc)) {
+            newBucketChain.addFirst(groupInfo.nextGroupDesc.appCookie());
+        }
+        newBucketChain.addFirst(l3mcastGroupKey);
+        // If active keys shows only the top-level group without a chain of groups,
+        // then it represents an empty group. Update by replacing empty chain.
+        if (allActiveKeys.size() == 1 && allActiveKeys.get(0).size() == 1) {
+            allActiveKeys.clear();
+        }
+        allActiveKeys.add(newBucketChain);
+        updatePendingNextObjective(l3mcastGroupKey,
+                                   new OfdpaNextGroup(allActiveKeys, nextObj));
+
+        updatePendingGroups(groupInfo.nextGroupDesc.appCookie(), l3mcastGce);
+        // Point next group to inner-most group, if any
+        if (!groupInfo.nextGroupDesc.equals(groupInfo.innerMostGroupDesc)) {
+            GroupChainElem innerGce = new GroupChainElem(groupInfo.nextGroupDesc,
+                    1, false);
+            updatePendingGroups(groupInfo.innerMostGroupDesc.appCookie(), innerGce);
+        }
+        log.debug("Adding to L3MCAST: device:{} gid:{} gkey:{} nextId:{}",
+                  deviceId, Integer.toHexString(l3mcastGroupId),
+                  l3mcastGroupKey, nextObj.id());
+        // send the innermost group
+        log.debug("Sending innermost group {} in group chain on device {} ",
+                Integer.toHexString(groupInfo.innerMostGroupDesc.givenGroupId()),
+                deviceId);
+        groupService.addGroup(groupInfo.innerMostGroupDesc);
     }
 
     /**
      * Removes the bucket in the top level group of a possible group-chain. Does
-     * not remove the groups in a group-chain pointed to by this bucket, as they
+     * not remove the groups in the group-chain pointed to by this bucket, as they
      * may be in use (referenced by other groups) elsewhere.
      *
-     * @param nextObjective the next group to remove a bucket from
+     * @param nextObjective the bucket information for a next group
      * @param next the representation of the existing group-chain for this next objective
      */
     protected void removeBucketFromGroup(NextObjective nextObjective, NextGroup next) {
-        if (nextObjective.type() != NextObjective.Type.HASHED) {
+        if (nextObjective.type() != NextObjective.Type.HASHED &&
+                nextObjective.type() != NextObjective.Type.BROADCAST) {
             log.warn("RemoveBuckets not applied to nextType:{} in dev:{} for next:{}",
                     nextObjective.type(), deviceId, nextObjective.id());
+            Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.UNSUPPORTED);
             return;
         }
         Collection<TrafficTreatment> treatments = nextObjective.next();
         TrafficTreatment treatment = treatments.iterator().next();
         // find the bucket to remove by noting the outport, and figuring out the
         // top-level group in the group-chain that indirectly references the port
-        PortNumber outport = null;
-        for (Instruction ins : treatment.allInstructions()) {
-            if (ins instanceof Instructions.OutputInstruction) {
-                outport = ((Instructions.OutputInstruction) ins).port();
-                break;
-            }
-        }
-        if (outport == null) {
-            log.error("next objective {} has no outport", nextObjective.id());
+        PortNumber portToRemove = readOutPortFromTreatment(treatment);
+        if (portToRemove == null) {
+            log.warn("next objective {} has no outport.. cannot remove bucket"
+                    + "from group in dev: {}", nextObjective.id(), deviceId);
+            Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.BADPARAMS);
             return;
         }
 
-        List<Deque<GroupKey>> allgkeys = Ofdpa2Pipeline.appKryo.deserialize(next.data());
+        List<Deque<GroupKey>> allActiveKeys = Ofdpa2Pipeline.appKryo.deserialize(next.data());
         Deque<GroupKey> foundChain = null;
         int index = 0;
-        for (Deque<GroupKey> gkeys : allgkeys) {
+        for (Deque<GroupKey> gkeys : allActiveKeys) {
+            // last group in group chain should have a single bucket pointing to port
             GroupKey groupWithPort = gkeys.peekLast();
             Group group = groupService.getGroup(deviceId, groupWithPort);
             if (group == null) {
-                log.warn("Inconsistent group chain");
+                log.warn("Inconsistent group chain found when removing bucket"
+                        + "for next:{} in dev:{}", nextObjective.id(), deviceId);
                 continue;
             }
-            // last group in group chain should have a single bucket pointing to port
-            List<Instruction> lastIns = group.buckets().buckets().iterator()
-                    .next().treatment().allInstructions();
-            for (Instruction i : lastIns) {
-                if (i instanceof Instructions.OutputInstruction) {
-                    PortNumber lastport = ((Instructions.OutputInstruction) i).port();
-                    if (lastport.equals(outport)) {
-                        foundChain = gkeys;
-                        break;
-                    }
-                }
-            }
-            if (foundChain != null) {
+            PortNumber pout = readOutPortFromTreatment(
+                                  group.buckets().buckets().get(0).treatment());
+            if (pout.equals(portToRemove)) {
+                foundChain = gkeys;
                 break;
             }
             index++;
         }
-        if (foundChain != null) {
-            //first groupkey is the one we want to modify
-            GroupKey modGroupKey = foundChain.peekFirst();
-            Group modGroup = groupService.getGroup(deviceId, modGroupKey);
-            //second groupkey is the one we wish to remove the reference to
-            GroupKey pointedGroupKey = null;
-            int i = 0;
-            for (GroupKey gk : foundChain) {
-                if (i++ == 1) {
-                    pointedGroupKey = gk;
-                    break;
-                }
-            }
-            Group pointedGroup = groupService.getGroup(deviceId, pointedGroupKey);
-            GroupBucket bucket = DefaultGroupBucket.createSelectGroupBucket(
-                    DefaultTrafficTreatment.builder()
-                            .group(pointedGroup.id())
-                            .build());
-            GroupBuckets removeBuckets = new GroupBuckets(Collections
-                    .singletonList(bucket));
-            log.debug("Removing buckets from group id {} for next id {} in device {}",
-                    modGroup.id(), nextObjective.id(), deviceId);
-            groupService.removeBucketsFromGroup(deviceId, modGroupKey,
-                    removeBuckets, modGroupKey,
-                    nextObjective.appId());
-            //update store
-            allgkeys.remove(index);
-            flowObjectiveStore.putNextGroup(nextObjective.id(),
-                    new OfdpaNextGroup(allgkeys, nextObjective));
-        } else {
+        if (foundChain == null) {
             log.warn("Could not find appropriate group-chain for removing bucket"
                     + " for next id {} in dev:{}", nextObjective.id(), deviceId);
+            Ofdpa2Pipeline.fail(nextObjective, ObjectiveError.BADPARAMS);
+            return;
         }
+
+        //first groupkey is the one we want to modify
+        GroupKey modGroupKey = foundChain.peekFirst();
+        Group modGroup = groupService.getGroup(deviceId, modGroupKey);
+        //second groupkey is the one we wish to remove the reference to
+        GroupKey pointedGroupKey = null;
+        int i = 0;
+        for (GroupKey gk : foundChain) {
+            if (i++ == 1) {
+                pointedGroupKey = gk;
+                break;
+            }
+        }
+        Group pointedGroup = groupService.getGroup(deviceId, pointedGroupKey);
+        GroupBucket bucket = null;
+        if (nextObjective.type() == NextObjective.Type.HASHED) {
+            bucket = DefaultGroupBucket.createSelectGroupBucket(
+                                            DefaultTrafficTreatment.builder()
+                                            .group(pointedGroup.id())
+                                            .build());
+        } else {
+            bucket = DefaultGroupBucket.createAllGroupBucket(
+                                            DefaultTrafficTreatment.builder()
+                                            .group(pointedGroup.id())
+                                            .build());
+        }
+        GroupBuckets removeBuckets = new GroupBuckets(Collections
+                                                      .singletonList(bucket));
+        log.debug("Removing buckets from group id 0x{} pointing to group id 0x{} "
+                + "for next id {} in device {}", Integer.toHexString(modGroup.id().id()),
+                Integer.toHexString(pointedGroup.id().id()), nextObjective.id(), deviceId);
+        groupService.removeBucketsFromGroup(deviceId, modGroupKey,
+                                            removeBuckets, modGroupKey,
+                                            nextObjective.appId());
+        // update store
+        // If the bucket removed was the last bucket in the group, then
+        // retain an entry for the top level group which still exists.
+        if (allActiveKeys.size() == 1) {
+            ArrayDeque<GroupKey> top = new ArrayDeque<>();
+            top.add(modGroupKey);
+            allActiveKeys.add(top);
+        }
+        allActiveKeys.remove(index);
+        flowObjectiveStore.putNextGroup(nextObjective.id(),
+                                        new OfdpaNextGroup(allActiveKeys,
+                                                           nextObjective));
     }
 
     /**
@@ -1021,13 +1367,13 @@ public class Ofdpa2GroupHandler {
      *             this next objective
      */
     protected void removeGroup(NextObjective nextObjective, NextGroup next) {
-        List<Deque<GroupKey>> allgkeys = Ofdpa2Pipeline.appKryo.deserialize(next.data());
+        List<Deque<GroupKey>> allActiveKeys = Ofdpa2Pipeline.appKryo.deserialize(next.data());
 
-        List<GroupKey> groupKeys = allgkeys.stream()
+        List<GroupKey> groupKeys = allActiveKeys.stream()
                 .map(Deque::getFirst).collect(Collectors.toList());
         pendingRemoveNextObjectives.put(nextObjective, groupKeys);
 
-        allgkeys.forEach(groupChain -> groupChain.forEach(groupKey ->
+        allActiveKeys.forEach(groupChain -> groupChain.forEach(groupKey ->
                 groupService.removeGroup(deviceId, groupKey, nextObjective.appId())));
         flowObjectiveStore.removeNextGroup(nextObjective.id());
     }
@@ -1036,7 +1382,7 @@ public class Ofdpa2GroupHandler {
     //  Helper Methods and Classes
     //////////////////////////////////////
 
-    private void updatePendingNextObjective(GroupKey key, OfdpaNextGroup value) {
+    protected void updatePendingNextObjective(GroupKey key, OfdpaNextGroup value) {
         List<OfdpaNextGroup> nextList = new CopyOnWriteArrayList<OfdpaNextGroup>();
         nextList.add(value);
         List<OfdpaNextGroup> ret = pendingAddNextObjectives.asMap()
@@ -1174,6 +1520,21 @@ public class Ofdpa2GroupHandler {
     }
 
     /**
+     * Returns the outport in a traffic treatment.
+     *
+     * @param tt the treatment
+     * @return the PortNumber for the outport or null
+     */
+    protected static PortNumber readOutPortFromTreatment(TrafficTreatment tt) {
+        for (Instruction ins : tt.allInstructions()) {
+            if (ins.type() == Instruction.Type.OUTPUT) {
+                return ((Instructions.OutputInstruction) ins).port();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns a hash as the L2 Interface Group Key.
      *
      * Keep the lower 6-bit for port since port number usually smaller than 64.
@@ -1184,16 +1545,41 @@ public class Ofdpa2GroupHandler {
      * @param portNumber Port number
      * @return L2 interface group key
      */
-    protected int l2InterfaceGroupKey(
-            DeviceId deviceId, VlanId vlanId, long portNumber) {
+    protected int l2InterfaceGroupKey(DeviceId deviceId, VlanId vlanId, long portNumber) {
         int portLowerBits = (int) portNumber & PORT_LOWER_BITS_MASK;
         long portHigherBits = portNumber & PORT_HIGHER_BITS_MASK;
         int hash = Objects.hash(deviceId, vlanId, portHigherBits);
         return L2_INTERFACE_TYPE | (TYPE_MASK & hash << 6) | portLowerBits;
     }
 
+    private Group retrieveTopLevelGroup(List<Deque<GroupKey>> allActiveKeys,
+                                        int nextid) {
+        GroupKey topLevelGroupKey = null;
+        if (!allActiveKeys.isEmpty()) {
+            topLevelGroupKey = allActiveKeys.get(0).peekFirst();
+        } else {
+            log.warn("Could not determine top level group while processing"
+                    + "next:{} in dev:{}", nextid, deviceId);
+            return null;
+        }
+        Group topGroup = groupService.getGroup(deviceId, topLevelGroupKey);
+        if (topGroup == null) {
+            log.warn("Could not find top level group while processing "
+                    + "next:{} in dev:{}", nextid, deviceId);
+        }
+        return topGroup;
+    }
+
     /**
      * Utility class for moving group information around.
+     *
+     * Example: Suppose we are trying to create a group-chain A-B-C-D, where
+     * A is the top level group, and D is the inner-most group, typically L2 Interface.
+     * The innerMostGroupDesc is always D. At various stages of the creation
+     * process the nextGroupDesc may be C or B. The nextGroupDesc exists to
+     * inform the referencing group about which group it needs to point to,
+     * and wait for. In some cases the group chain may simply be A-B. In this case,
+     * both innerMostGroupDesc and nextGroupDesc will be B.
      */
     protected class GroupInfo {
         /**
@@ -1205,13 +1591,31 @@ public class Ofdpa2GroupHandler {
         /**
          * Description of the next group in the group chain.
          * It can be L2 interface, L3 interface, L3 unicast, L3 VPN group.
-         * It is possible that nextGroup is the same as the innerMostGroup.
+         * It is possible that nextGroupDesc is the same as the innerMostGroup.
          */
         private GroupDescription nextGroupDesc;
 
         GroupInfo(GroupDescription innerMostGroupDesc, GroupDescription nextGroupDesc) {
             this.innerMostGroupDesc = innerMostGroupDesc;
             this.nextGroupDesc = nextGroupDesc;
+        }
+
+        /**
+         * Getter for innerMostGroupDesc.
+         *
+         * @return the inner most group description
+         */
+        public GroupDescription getInnerMostGroupDesc() {
+            return innerMostGroupDesc;
+        }
+
+        /**
+         * Getter for the next group description.
+         *
+         * @return the next group description
+         */
+        public GroupDescription getNextGroupDesc() {
+            return nextGroupDesc;
         }
     }
 
@@ -1231,7 +1635,7 @@ public class Ofdpa2GroupHandler {
      * top level ECMP group, while every other element represents a unique groupKey.
      * <p>
      * Also includes information about the next objective that
-     * resulted in this group-chain.
+     * resulted in these group-chains.
      *
      */
     protected class OfdpaNextGroup implements NextGroup {
@@ -1239,16 +1643,16 @@ public class Ofdpa2GroupHandler {
         private final List<Deque<GroupKey>> gkeys;
 
         public OfdpaNextGroup(List<Deque<GroupKey>> gkeys, NextObjective nextObj) {
-            this.gkeys = gkeys;
             this.nextObj = nextObj;
-        }
-
-        public List<Deque<GroupKey>> groupKey() {
-            return gkeys;
+            this.gkeys = gkeys;
         }
 
         public NextObjective nextObjective() {
             return nextObj;
+        }
+
+        public List<Deque<GroupKey>> groupKeys() {
+            return gkeys;
         }
 
         @Override
@@ -1262,7 +1666,7 @@ public class Ofdpa2GroupHandler {
      * Stores enough information to create a Group Description to add the group
      * to the switch by requesting the Group Service. Objects instantiating this
      * class are meant to be temporary and live as long as it is needed to wait for
-     * preceding groups in the group chain to be created.
+     * referenced groups in the group chain to be created.
      */
     protected class GroupChainElem {
         private GroupDescription groupDescription;
@@ -1277,7 +1681,7 @@ public class Ofdpa2GroupHandler {
         }
 
         /**
-         * This methods atomically decrements the counter for the number of
+         * This method atomically decrements the counter for the number of
          * groups this GroupChainElement is waiting on, for notifications from
          * the Group Service. When this method returns a value of 0, this
          * GroupChainElement is ready to be processed.
@@ -1296,5 +1700,71 @@ public class Ofdpa2GroupHandler {
                     " addBucketToGroup: " + addBucketToGroup +
                     " device: " + deviceId);
         }
+    }
+
+    /**
+     * Helper enum to handle the different MPLS group
+     * types.
+     */
+    protected enum OfdpaMplsGroupSubType {
+
+        MPLS_INTF((short) 0),
+
+        L2_VPN((short) 1),
+
+        L3_VPN((short) 2),
+
+        MPLS_TUNNEL_LABEL_1((short) 3),
+
+        MPLS_TUNNEL_LABEL_2((short) 4),
+
+        MPLS_SWAP_LABEL((short) 5),
+
+        MPLS_ECMP((short) 8);
+
+        private short value;
+
+        public static final int OFDPA_GROUP_TYPE_SHIFT = 28;
+        public static final int OFDPA_MPLS_SUBTYPE_SHIFT = 24;
+
+        OfdpaMplsGroupSubType(short value) {
+            this.value = value;
+        }
+
+        /**
+         * Gets the value as an short.
+         *
+         * @return the value as an short
+         */
+        public short getValue() {
+            return this.value;
+        }
+
+    }
+
+    /**
+     * Creates MPLS Label group id given a sub type and
+     * the index.
+     *
+     * @param subType the MPLS Label group sub type
+     * @param index the index of the group
+     * @return the OFDPA group id
+     */
+    public Integer makeMplsLabelGroupId(OfdpaMplsGroupSubType subType, int index) {
+        index = index & 0x00FFFFFF;
+        return index | (9 << OFDPA_GROUP_TYPE_SHIFT) | (subType.value << OFDPA_MPLS_SUBTYPE_SHIFT);
+    }
+
+    /**
+     * Creates MPLS Forwarding group id given a sub type and
+     * the index.
+     *
+     * @param subType the MPLS forwarding group sub type
+     * @param index the index of the group
+     * @return the OFDPA group id
+     */
+    public Integer makeMplsForwardingGroupId(OfdpaMplsGroupSubType subType, int index) {
+        index = index & 0x00FFFFFF;
+        return index | (10 << OFDPA_GROUP_TYPE_SHIFT) | (subType.value << OFDPA_MPLS_SUBTYPE_SHIFT);
     }
 }

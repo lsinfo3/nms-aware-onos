@@ -44,12 +44,37 @@ public interface StorageService {
     <K, V> ConsistentMapBuilder<K, V> consistentMapBuilder();
 
     /**
+     * Creates a new ConsistentMapBuilder.
+     *
+     * @param <V> value type
+     * @return builder for a consistent map
+     */
+    <V> DocumentTreeBuilder<V> documentTreeBuilder();
+
+    /**
      * Creates a new {@code AsyncConsistentTreeMapBuilder}.
      *
      * @param <V> value type
      * @return builder for a async consistent tree map
      */
     <V> ConsistentTreeMapBuilder<V> consistentTreeMapBuilder();
+
+    /**
+     * Creates a new {@code AsyncConsistentSetMultimapBuilder}.
+     *
+     * @param <K> key type
+     * @param <V> value type
+     * @return builder for a set based async consistent multimap
+     */
+    <K, V> ConsistentMultimapBuilder<K, V> consistentMultimapBuilder();
+
+    /**
+     * Creates a new {@code AtomicCounterMapBuilder}.
+     *
+     * @param <K> key type
+     * @return builder for an atomic counter map
+     */
+    <K> AtomicCounterMapBuilder<K> atomicCounterMapBuilder();
 
     /**
      * Creates a new DistributedSetBuilder.
@@ -127,6 +152,30 @@ public interface StorageService {
      * @return AsyncDocumentTree instance
      */
     <V> AsyncDocumentTree<V> getDocumentTree(String name, Serializer serializer);
+
+     /** Returns a set backed instance of {@code AsyncConsistentMultimap} with
+     * the specified name.
+     *
+     * @param name the multimap name
+     * @param serializer serializer
+     * @param <K> key type
+     * @param <V> value type
+     * @return set backed {@code AsyncConsistentMultimap} instance
+     */
+    <K, V> AsyncConsistentMultimap<K, V> getAsyncSetMultimap(String name,
+                                                             Serializer serializer);
+
+    /**
+     * Returns an instance of {@code AsyncConsistentTreeMap} with the specified
+     * name.
+     *
+     * @param name the treemap name
+     * @param serializer serializer
+     * @param <V> value type
+     * @return set backed {@code AsyncConsistentTreeMap} instance
+     */
+    <V> AsyncConsistentTreeMap<V> getAsyncTreeMap(String name,
+                                                  Serializer serializer);
 
     /**
      * Returns an instance of {@code Topic} with specified name.

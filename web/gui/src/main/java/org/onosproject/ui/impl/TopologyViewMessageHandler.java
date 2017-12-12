@@ -102,6 +102,7 @@ public class TopologyViewMessageHandler extends TopologyViewMessageHandlerBase {
     private static final String UPDATE_META = "updateMeta";
     private static final String ADD_HOST_INTENT = "addHostIntent";
     private static final String REMOVE_INTENT = "removeIntent";
+    private static final String RESUBMIT_INTENT = "resubmitIntent";
     private static final String ADD_MULTI_SRC_INTENT = "addMultiSourceIntent";
     private static final String REQ_RELATED_INTENTS = "requestRelatedIntents";
     private static final String REQ_NEXT_INTENT = "requestNextRelatedIntent";
@@ -118,7 +119,6 @@ public class TopologyViewMessageHandler extends TopologyViewMessageHandlerBase {
     private static final String SPRITE_LIST_REQ = "spriteListRequest";
     private static final String SPRITE_DATA_REQ = "spriteDataRequest";
     private static final String TOPO_START = "topoStart";
-    private static final String TOPO_HEARTBEAT = "topoHeartbeat";
     private static final String TOPO_SELECT_OVERLAY = "topoSelectOverlay";
     private static final String TOPO_STOP = "topoStop";
 
@@ -209,7 +209,6 @@ public class TopologyViewMessageHandler extends TopologyViewMessageHandlerBase {
     protected Collection<RequestHandler> createRequestHandlers() {
         return ImmutableSet.of(
                 new TopoStart(),
-                new TopoHeartbeat(),
                 new TopoSelectOverlay(),
                 new TopoStop(),
                 new ReqSummary(),
@@ -224,6 +223,7 @@ public class TopologyViewMessageHandler extends TopologyViewMessageHandlerBase {
                 new AddHostIntent(),
                 new AddMultiSourceIntent(),
                 new RemoveIntent(),
+                new ResubmitIntent(),
 
                 new ReqAllFlowTraffic(),
                 new ReqAllPortTraffic(),
@@ -262,17 +262,6 @@ public class TopologyViewMessageHandler extends TopologyViewMessageHandlerBase {
             sendAllLinks();
             sendAllHosts();
             sendTopoStartDone();
-        }
-    }
-
-    private final class TopoHeartbeat extends RequestHandler {
-        private TopoHeartbeat() {
-            super(TOPO_HEARTBEAT);
-        }
-
-        @Override
-        public void process(long sid, ObjectNode payload) {
-            // place holder for now
         }
     }
 
@@ -463,6 +452,23 @@ public class TopologyViewMessageHandler extends TopologyViewMessageHandlerBase {
                 } else {
                     intentService.withdraw(intent);
                 }
+            }
+        }
+    }
+
+    private final class ResubmitIntent extends RequestHandler {
+        private ResubmitIntent() {
+            super(RESUBMIT_INTENT);
+        }
+
+        @Override
+        public void process(long sid, ObjectNode payload) {
+            Intent intent = findIntentByPayload(payload);
+            if (intent == null) {
+                log.warn("Unable to find intent from payload {}", payload);
+            } else {
+                log.debug("Resubmitting intent {}", intent.key());
+                intentService.submit(intent);
             }
         }
     }

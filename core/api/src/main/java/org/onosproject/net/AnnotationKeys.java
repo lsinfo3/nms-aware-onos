@@ -24,7 +24,6 @@ import java.time.Duration;
  * Number of the annotation keys have been deprecated as the use of annotations
  * is being phased out and instead network configuration subsystem is being
  * phased-in for majority of model meta-data.
- * </p>
  */
 public final class AnnotationKeys {
 
@@ -44,6 +43,11 @@ public final class AnnotationKeys {
      */
     @Deprecated
     public static final String TYPE = "type";
+
+    /**
+     * Annotation key for UI type (the glyph ID for rendering).
+     */
+    public static final String UI_TYPE = "uiType";
 
     /**
      * Annotation key for latitude (e.g. latitude of device).
@@ -146,6 +150,13 @@ public final class AnnotationKeys {
      * Annotation key for the password.
      */
     public static final String PASSWORD = "password";
+
+    /**
+     * Link annotation key to express that a Link
+     * is backed by underlying protection mechanism.
+     */
+    // value is undefined at the moment, only using key existence
+    public static final String PROTECTED = "protected";
 
     /**
      * Returns the value annotated object for the specified annotation key.

@@ -22,31 +22,12 @@
 (function () {
     'use strict';
 
-    var wss, is, sus, ts, t2vs;
+    var wss;
     var Collection, Model;
 
     var remappedDeviceTypes = {
         virtual: 'cord'
     };
-
-    // configuration
-    var devIconDim = 36,
-        labelPad = 10,
-        hostRadius = 14,
-        badgeConfig = {
-            radius: 12,
-            yoff: 5,
-            gdelta: 10
-        },
-        halfDevIcon = devIconDim / 2,
-        devBadgeOff = { dx: -halfDevIcon, dy: -halfDevIcon },
-        hostBadgeOff = { dx: -hostRadius, dy: -hostRadius },
-        status = {
-            i: 'badgeInfo',
-            w: 'badgeWarn',
-            e: 'badgeError'
-        },
-        deviceLabelIndex = 0;
 
     function createSubRegionCollection(data, region) {
 
@@ -57,70 +38,54 @@
         return new SubRegionCollection(data);
     }
 
-    function mapDeviceTypeToGlyph(type) {
-        return remappedDeviceTypes[type] || type || 'switch';
-    }
-
-    function iconBox(dim, labelWidth) {
-        return {
-            x: -dim / 2,
-            y: -dim / 2,
-            width: dim + labelWidth,
-            height: dim
-        }
-    }
-
     angular.module('ovTopo2')
     .factory('Topo2SubRegionService',
-        ['WebSocketService', 'Topo2Collection', 'Topo2NodeModel', 'IconService', 'SvgUtilService',
-        'ThemeService', 'Topo2ViewService',
+        ['WebSocketService', 'Topo2Collection', 'Topo2NodeModel',
+        'ThemeService', 'Topo2ViewService', 'Topo2SubRegionPanelService',
 
-            function (_wss_, _Collection_, _NodeModel_, _is_, _sus_, _ts_, classnames, _t2vs_) {
+            function (_wss_, _c_, _NodeModel_, _ts_, _t2vs_m, _t2srp_) {
 
                 wss = _wss_;
-                t2vs = _t2vs_;
-                is = _is_;
-                sus = _sus_;
-                ts = _ts_;
-                Collection = _Collection_;
+                Collection = _c_;
 
                 Model = _NodeModel_.extend({
                     initialize: function () {
-                        this.set('weight', 0);
-                        this.constructor.__super__.initialize.apply(this, arguments);
+                        this.super = this.constructor.__super__;
+                        this.super.initialize.apply(this, arguments);
+                    },
+                    events: {
+                        'dblclick': 'navigateToRegion',
+                        'click': 'onClick'
+                    },
+                    onChange: function () {
+                        // Update class names when the model changes
+                        if (this.el) {
+                            this.el.attr('class', this.svgClassName());
+                        }
                     },
                     nodeType: 'sub-region',
-                    mapDeviceTypeToGlyph: mapDeviceTypeToGlyph,
+                    icon: function () {
+                        var type = this.get('type');
+                        return remappedDeviceTypes[type] || type || 'm_cloud';
+                    },
                     onClick: function () {
+                        var selected = this.select(d3.event);
+
+                        if (selected.length > 0) {
+                            _t2srp_.displayPanel(this);
+                        } else {
+                            _t2srp_.hide();
+                        }
+                    },
+                    navigateToRegion: function () {
+
+                        if (d3.event.defaultPrevented) return;
+
                         wss.sendEvent('topo2navRegion', {
                             dir: 'down',
                             rid: this.get('id')
                         });
-                    },
-                    onEnter: function (el) {
-
-                        var node = d3.select(el),
-                            glyphId = mapDeviceTypeToGlyph(this.get('type')),
-                            label = this.trimLabel(this.label()),
-                            glyph, labelWidth;
-
-                        this.el = node;
-                        this.el.on('click', this.onClick.bind(this));
-
-                        // Label
-                        var labelElements = this.addLabelElements(label);
-                        labelWidth = label ? this.computeLabelWidth(node) : 0;
-                        labelElements.rect.attr(iconBox(devIconDim, labelWidth));
-
-                        // Icon
-                        glyph = is.addDeviceIcon(node, glyphId, devIconDim);
-                        glyph.attr(iconBox(devIconDim, 0));
-
-                        node.attr('transform', sus.translate(-halfDevIcon, -halfDevIcon));
-                        this.render();
-                    },
-                    onExit: function () {},
-                    render: function () {}
+                    }
                 });
 
                 return {

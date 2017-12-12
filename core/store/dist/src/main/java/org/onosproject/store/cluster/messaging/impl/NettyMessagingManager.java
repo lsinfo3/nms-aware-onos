@@ -93,7 +93,7 @@ import static org.onosproject.security.AppPermission.Type.CLUSTER_WRITE;
 @Service
 public class NettyMessagingManager implements MessagingService {
 
-    private static final int REPLY_TIME_OUT_MILLIS = 250;
+    private static final int REPLY_TIME_OUT_MILLIS = 500;
     private static final short MIN_KS_LENGTH = 6;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
@@ -267,8 +267,8 @@ public class NettyMessagingManager implements MessagingService {
     @Override
     public CompletableFuture<byte[]> sendAndReceive(Endpoint ep, String type, byte[] payload, Executor executor) {
         checkPermission(CLUSTER_WRITE);
-        CompletableFuture<byte[]> response = new CompletableFuture<>();
-        Callback callback = new Callback(response, executor);
+        CompletableFuture<byte[]> future = new CompletableFuture<>();
+        Callback callback = new Callback(future, executor);
         Long messageId = messageIdGenerator.incrementAndGet();
         callbacks.put(messageId, callback);
         InternalMessage message = new InternalMessage(preamble,
@@ -277,11 +277,14 @@ public class NettyMessagingManager implements MessagingService {
                                                       localEp,
                                                       type,
                                                       payload);
-        return sendAsync(ep, message).whenComplete((r, e) -> {
-            if (e != null) {
+
+        sendAsync(ep, message).whenComplete((response, error) -> {
+            if (error != null) {
                 callbacks.invalidate(messageId);
+                callback.completeExceptionally(error);
             }
-        }).thenComposeAsync(v -> response, executor);
+        });
+        return future;
     }
 
     @Override
@@ -299,6 +302,7 @@ public class NettyMessagingManager implements MessagingService {
             try {
                 responsePayload = handler.apply(message.sender(), message.payload());
             } catch (Exception e) {
+                log.debug("An error occurred in a message handler: {}", e);
                 status = Status.ERROR_HANDLER_EXCEPTION;
             }
             sendReply(message, status, Optional.ofNullable(responsePayload));
@@ -310,7 +314,13 @@ public class NettyMessagingManager implements MessagingService {
         checkPermission(CLUSTER_WRITE);
         handlers.put(type, message -> {
             handler.apply(message.sender(), message.payload()).whenComplete((result, error) -> {
-                Status status = error == null ? Status.OK : Status.ERROR_HANDLER_EXCEPTION;
+                Status status;
+                if (error == null) {
+                    status = Status.OK;
+                } else {
+                    log.debug("An error occurred in a message handler: {}", error);
+                    status = Status.ERROR_HANDLER_EXCEPTION;
+                }
                 sendReply(message, status, Optional.ofNullable(result));
             });
         });

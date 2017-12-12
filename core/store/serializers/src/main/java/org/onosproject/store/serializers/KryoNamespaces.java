@@ -68,6 +68,7 @@ import org.onosproject.net.Device;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.Element;
 import org.onosproject.net.EncapsulationType;
+import org.onosproject.net.FilteredConnectPoint;
 import org.onosproject.net.GridType;
 import org.onosproject.net.HostId;
 import org.onosproject.net.HostLocation;
@@ -212,11 +213,12 @@ import org.onosproject.store.Timestamp;
 import org.onosproject.store.primitives.MapUpdate;
 import org.onosproject.store.primitives.TransactionId;
 import org.onosproject.store.service.MapEvent;
-import org.onosproject.store.service.MapTransaction;
+import org.onosproject.store.service.TransactionLog;
 import org.onosproject.store.service.SetEvent;
 import org.onosproject.store.service.Task;
 import org.onosproject.store.service.Versioned;
 import org.onosproject.store.service.WorkQueueStats;
+import org.onosproject.ui.model.topo.UiTopoLayoutId;
 
 import java.net.URI;
 import java.time.Duration;
@@ -408,8 +410,6 @@ public final class KryoNamespaces {
                     L2ModificationInstruction.class,
                     L2ModificationInstruction.L2SubType.class,
                     L2ModificationInstruction.ModEtherInstruction.class,
-                    L2ModificationInstruction.PushHeaderInstructions.class,
-                    L2ModificationInstruction.PopVlanInstruction.class,
                     L2ModificationInstruction.ModMplsHeaderInstruction.class,
                     L2ModificationInstruction.ModVlanIdInstruction.class,
                     L2ModificationInstruction.ModVlanPcpInstruction.class,
@@ -500,6 +500,7 @@ public final class KryoNamespaces {
             .register(new DefaultPortSerializer(), DefaultPort.class)
             .register(new LinkKeySerializer(), LinkKey.class)
             .register(new ConnectPointSerializer(), ConnectPoint.class)
+            .register(new FilteredConnectPointSerializer(), FilteredConnectPoint.class)
             .register(new DefaultLinkSerializer(), DefaultLink.class)
             .register(new MastershipTermSerializer(), MastershipTerm.class)
             .register(new HostLocationSerializer(), HostLocation.class)
@@ -511,10 +512,11 @@ public final class KryoNamespaces {
             .register(Region.Type.class)
             .register(RegionId.class)
             .register(DefaultRegion.class)
+            .register(UiTopoLayoutId.class)
             .register(ExtensionSelectorType.class)
             .register(ExtensionTreatmentType.class)
             .register(TransactionId.class)
-            .register(MapTransaction.class)
+            .register(TransactionLog.class)
             .register(MapUpdate.class)
             .register(MapUpdate.Type.class)
             .register(Versioned.class)

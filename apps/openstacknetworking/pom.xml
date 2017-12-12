@@ -22,7 +22,7 @@
     <parent>
         <groupId>org.onosproject</groupId>
         <artifactId>onos-apps</artifactId>
-        <version>1.7.2-SNAPSHOT</version>
+        <version>1.8.10-SNAPSHOT</version>
     </parent>
 
     <artifactId>onos-app-openstacknetworking</artifactId>
@@ -31,6 +31,7 @@
     <modules>
         <module>api</module>
         <module>web</module>
+        <module>cli</module>
         <module>switching</module>
         <module>routing</module>
     </modules>

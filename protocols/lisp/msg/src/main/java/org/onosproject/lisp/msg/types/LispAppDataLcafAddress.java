@@ -30,8 +30,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
 /**
  * Application data type LCAF address class.
  * <p>
- * Application data type is defined in draft-ietf-lisp-lcaf-13
- * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-13#page-26
+ * Application data type is defined in draft-ietf-lisp-lcaf-20
+ * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-20#page-27
  *
  * <pre>
  * {@literal
@@ -40,7 +40,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * |           AFI = 16387         |     Rsvd1     |     Flags     |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- * |   Type = 4    |     Rsvd2     |            12 + n             |
+ * |   Type = 4    |     Rsvd2     |            Length             |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * |       IP TOS, IPv6 TC, or Flow Label          |    Protocol   |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -381,6 +381,7 @@ public final class LispAppDataLcafAddress extends LispLcafAddress {
         public void writeTo(ByteBuf byteBuf, LispAppDataLcafAddress address)
                 throws LispWriterException {
 
+            int lcafIndex = byteBuf.writerIndex();
             LispLcafAddress.serializeCommon(byteBuf, address);
 
             byte[] tos = getPartialByteArray(address.getIpTos());
@@ -393,6 +394,8 @@ public final class LispAppDataLcafAddress extends LispLcafAddress {
 
             AfiAddressWriter writer = new LispAfiAddress.AfiAddressWriter();
             writer.writeTo(byteBuf, address.getAddress());
+
+            LispLcafAddress.updateLength(lcafIndex, byteBuf);
         }
 
         /**

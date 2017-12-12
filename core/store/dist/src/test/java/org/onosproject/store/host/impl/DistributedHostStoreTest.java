@@ -36,7 +36,12 @@ import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.Timestamp;
 import org.onosproject.store.service.TestStorageService;
 
+import java.util.Dictionary;
 import com.google.common.collect.Sets;
+
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.Set;
 
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertFalse;
@@ -119,6 +124,7 @@ public class DistributedHostStoreTest {
         Set<IpAddress> ips = new HashSet<>();
         ips.add(IP1);
         ips.add(IP2);
+
         HostDescription description = createHostDesc(HOSTID, ips);
         ecXHostStore.createOrUpdateHost(PID, HOSTID, description, false);
 
@@ -155,5 +161,7 @@ public class DistributedHostStoreTest {
                                           HostLocation.NONE,
                                           ips);
     }
+
+
 
 }

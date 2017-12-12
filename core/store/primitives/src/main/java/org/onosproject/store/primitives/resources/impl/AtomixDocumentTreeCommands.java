@@ -26,6 +26,7 @@ import io.atomix.copycat.Command;
 import io.atomix.copycat.Query;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.onlab.util.Match;
 import org.onosproject.store.service.DocumentPath;
@@ -139,7 +140,7 @@ public class AtomixDocumentTreeCommands {
     @SuppressWarnings("serial")
     public static class Update extends DocumentTreeCommand<DocumentTreeUpdateResult<byte[]>> {
 
-        private byte[] value;
+        private Optional<byte[]> value;
         private Match<byte[]> valueMatch;
         private Match<Long> versionMatch;
 
@@ -150,14 +151,14 @@ public class AtomixDocumentTreeCommands {
             this.versionMatch = null;
         }
 
-        public Update(DocumentPath path, byte[] value, Match<byte[]> valueMatch, Match<Long> versionMatch) {
+        public Update(DocumentPath path, Optional<byte[]> value, Match<byte[]> valueMatch, Match<Long> versionMatch) {
             super(path);
             this.value = value;
             this.valueMatch = valueMatch;
             this.versionMatch = versionMatch;
         }
 
-        public byte[] value() {
+        public Optional<byte[]> value() {
             return value;
         }
 
@@ -186,6 +187,11 @@ public class AtomixDocumentTreeCommands {
         }
 
         @Override
+        public CompactionMode compaction() {
+            return value == null ? CompactionMode.TOMBSTONE : CompactionMode.QUORUM;
+        }
+
+        @Override
         public String toString() {
             return MoreObjects.toStringHelper(getClass())
                     .add("path", path())
@@ -208,6 +214,11 @@ public class AtomixDocumentTreeCommands {
         @Override
         public void readObject(BufferInput<?> buffer, Serializer serializer) {
         }
+
+        @Override
+        public CompactionMode compaction() {
+            return CompactionMode.TOMBSTONE;
+        }
     }
 
     /**
@@ -225,11 +236,15 @@ public class AtomixDocumentTreeCommands {
         }
 
         @Override
-        public void writeObject(BufferOutput<?> buffer, Serializer serializer) {
+        public CompactionMode compaction() {
+            return CompactionMode.QUORUM;
         }
 
         @Override
-        public void readObject(BufferInput<?> buffer, Serializer serializer) {
+        public String toString() {
+            return MoreObjects.toStringHelper(getClass())
+                    .add("path", path())
+                    .toString();
         }
     }
 
@@ -248,11 +263,15 @@ public class AtomixDocumentTreeCommands {
         }
 
         @Override
-        public void writeObject(BufferOutput<?> buffer, Serializer serializer) {
+        public CompactionMode compaction() {
+            return CompactionMode.TOMBSTONE;
         }
 
         @Override
-        public void readObject(BufferInput<?> buffer, Serializer serializer) {
+        public String toString() {
+            return MoreObjects.toStringHelper(getClass())
+                    .add("path", path())
+                    .toString();
         }
     }
 

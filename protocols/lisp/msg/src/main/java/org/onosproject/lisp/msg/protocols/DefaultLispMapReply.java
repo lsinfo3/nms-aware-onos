@@ -32,13 +32,19 @@ import static org.onosproject.lisp.msg.protocols.DefaultLispMapRecord.MapRecordW
 /**
  * Default LISP map reply message class.
  */
-public final class DefaultLispMapReply implements LispMapReply {
+public final class DefaultLispMapReply extends AbstractLispMessage
+        implements LispMapReply {
 
     private final long nonce;
     private final boolean probe;
     private final boolean etr;
     private final boolean security;
     private final List<LispMapRecord> mapRecords;
+
+    static final ReplyWriter WRITER;
+    static {
+        WRITER = new ReplyWriter();
+    }
 
     /**
      * A private constructor that protects object instantiation from external.
@@ -63,8 +69,8 @@ public final class DefaultLispMapReply implements LispMapReply {
     }
 
     @Override
-    public void writeTo(ByteBuf byteBuf) {
-        // TODO: serialize LispMapReply message
+    public void writeTo(ByteBuf byteBuf) throws LispWriterException {
+        WRITER.writeTo(byteBuf, this);
     }
 
     @Override
@@ -242,7 +248,6 @@ public final class DefaultLispMapReply implements LispMapReply {
      */
     public static final class ReplyWriter implements LispMessageWriter<LispMapReply> {
 
-        private static final int REPLY_MSG_TYPE = 2;
         private static final int REPLY_SHIFT_BIT = 4;
 
         private static final int PROBE_FLAG_SHIFT_BIT = 3;
@@ -258,7 +263,7 @@ public final class DefaultLispMapReply implements LispMapReply {
         public void writeTo(ByteBuf byteBuf, LispMapReply message) throws LispWriterException {
 
             // specify LISP message type
-            byte msgType = (byte) (REPLY_MSG_TYPE << REPLY_SHIFT_BIT);
+            byte msgType = (byte) (LispType.LISP_MAP_REPLY.getTypeCode() << REPLY_SHIFT_BIT);
 
             // probe flag
             byte probe = DISABLE_BIT;

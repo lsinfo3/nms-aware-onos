@@ -35,6 +35,9 @@ export ONOS_CELL=${ONOS_CELL:-local}
 export ONOS_WEB_USER=onos
 export ONOS_WEB_PASS=rocks
 
+# Use raw SSH client for CLI console access by default
+export ONOS_USE_SSH=true
+
 # Setup default location of test scenarios
 export ONOS_SCENARIOS=$ONOS_ROOT/tools/test/scenarios
 
@@ -45,25 +48,27 @@ function o {
         egrep "${1:-$ONOS_ROOT}" | head -n 1)
 }
 
-# Short-hand for 'mvn clean install' for us lazy folk
-alias mci='mvn clean install'
-alias mcis='mvn clean install -DskipTests -Dcheckstyle.skip'
-alias mis='mvn install -DskipTests -Dcheckstyle.skip'
+# Buck (if "buck" is not on the PATH)
+[ -z "$(which buck)" ] && alias buck="onos-buck"
 
 # Short-hand for ONOS build, package and test.
 alias ob='onos-build'
-alias obf='ob -DskipTests -Dcheckstyle.skip'
-alias obi='onos-build -Dmaven.test.failure.ignore=true'
-alias obs='onos-build-selective'
+alias obf='(cd $ONOS_ROOT && buck build onos)'
 alias obd='onos-build-docs'
 alias op='onos-package'
-alias ok='onos-karaf'
 alias ot='onos-test'
+
+alias deprecatedAlias='echo "This alias has been deprecated."'
+alias obi=deprecatedAlias
+alias obs=deprecatedAlias
+
+alias ok='NO_BUCKD=1 buck run onos-local --'
+alias oh='onos localhost halt'
+
 alias ol='onos-log'
 alias ow='onos-watch'
 alias ocl='onos-check-logs'
 alias oi='setPrimaryInstance'
-alias pub='onos-push-update-bundle'
 
 # Short-hand for tailing and searching the ONOS (karaf) log
 alias tl='$ONOS_ROOT/tools/dev/bin/onos-local-log'
@@ -89,6 +94,13 @@ alias docs='open $ONOS_ROOT/docs/target/site/apidocs/index.html'
 alias rsdocs='onos-rsdocs'
 alias gui='onos-gui'
 
+# Short-hand for 'mvn clean install' for us lazy folk
+alias mci='mvn clean install'
+alias mcis='mvn clean install -DskipTests -Dcheckstyle.skip'
+alias mis='mvn install -DskipTests -Dcheckstyle.skip'
+
+# Git annotated one-line log
+alias gil='git log --oneline --decorate=short'
 
 # Test related conveniences
 
@@ -96,7 +108,18 @@ alias gui='onos-gui'
 alias sshctl='onos-ssh'
 alias sshnet='onos-ssh $OCN'
 
-
+# Runs a sequence of STC scenarios until the first failure.
+function stcs {
+    for s in "$@"; do
+        if [[ $s =~ ^[0-9]*$ ]]; then
+            printf "Waiting %d seconds...\n" $s
+            sleep $s
+        else
+            printf "Running scenario %s...\n" $s
+            stc $s || return 1
+        fi
+    done
+}
 
 # Applies the settings in the specified topology recipe file or lists current
 # topo recipe definition if no topo recipe file is given.
@@ -167,7 +190,8 @@ function cell {
         spec=${3:-3+1}
         spec=${spec/+/%2B}
         user=${4:-$(id -un)}
-        query="duration=$duration&spec=$spec&user=$user"
+        hint=${5}
+        query="duration=$duration&spec=$spec&user=$user&cellNameHint=$hint"
         curl -sS -X POST "http://$CELL_WARDEN:4321/?$query" -d "$(cat ~/.ssh/id_rsa.pub)" > $aux
         . $aux
         rm -f $aux
@@ -185,11 +209,11 @@ function cell {
         ;;
 
     "")
-        env | egrep "ONOS_CELL"
-        env | egrep "OCI"
-        env | egrep "OC[0-9]+" | sort
-        env | egrep "OC[NT]"
-        env | egrep "ONOS_" | egrep -v 'ONOS_ROOT|ONOS_CELL|ONOS_INSTANCES|ONOS_DEVICES|ONOS_HOSTS' | sort
+        env | egrep "^ONOS_CELL"
+        env | egrep "^OCI"
+        env | egrep "^OC[0-9]+" | sort
+        env | egrep "^OC[NT]"
+        env | egrep "^ONOS_" | egrep -v 'ONOS_ROOT|ONOS_CELL|ONOS_INSTANCES|ONOS_DEVICES|ONOS_HOSTS' | sort
         ;;
 
     *)
@@ -275,9 +299,3 @@ alias atttopo='onos-netcfg $OCI $ONOS_ROOT/tools/test/topos/attmpls-cfg.json'
 
 # Load UK topo GEO data
 alias uktopo='onos-netcfg $OCI $ONOS_ROOT/tools/test/topos/uk-cfg.json'
-
-# Git annotated one-line log
-alias gil='git log --oneline --decorate=short'
-
-# Buck (if "buck" is not on the PATH)
-[ -z "$(which buck)" ] && alias buck="onos-buck"

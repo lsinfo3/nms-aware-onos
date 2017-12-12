@@ -40,6 +40,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.NotFoundException;
 
+import com.google.common.collect.Lists;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -62,6 +63,7 @@ import org.onosproject.net.DefaultLink;
 import org.onosproject.net.DefaultPath;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.Link;
+import org.onosproject.pce.pceservice.ExplicitPathInfo;
 import org.onosproject.pce.pceservice.api.PceService;
 import org.onosproject.pce.pceservice.PcepAnnotationKeys;
 import org.onosproject.pce.pcestore.api.PceStore;
@@ -84,6 +86,7 @@ public class PcePathResourceTest extends PceResourceTest {
     private final ProviderId producerName = new ProviderId("producer1", "13");
     private Path path;
     private Tunnel tunnel;
+    private List<ExplicitPathInfo> explicitPathInfoList;
     private DeviceId deviceId1;
     private DeviceId deviceId2;
     private DeviceId deviceId3;
@@ -173,6 +176,11 @@ public class PcePathResourceTest extends PceResourceTest {
        tunnel = new DefaultTunnel(producerName, src, dst, Tunnel.Type.VXLAN,
                                   Tunnel.State.ACTIVE, groupId, tunnelId,
                                   tunnelName, path, builderAnn.build());
+
+        explicitPathInfoList = Lists.newLinkedList();
+        ExplicitPathInfo obj = new ExplicitPathInfo(ExplicitPathInfo.Type.LOOSE, deviceId2);
+        explicitPathInfoList.add(obj);
+
     }
 
     /**
@@ -204,6 +212,10 @@ public class PcePathResourceTest extends PceResourceTest {
         expect(pceService.queryPath(anyObject()))
                          .andReturn(tunnel)
                          .anyTimes();
+
+        expect(pceService.explicitPathInfoList(tunnel.tunnelName().value()))
+                .andReturn(explicitPathInfoList)
+                .anyTimes();
         replay(pceService);
 
         WebTarget wt = target();

@@ -22,8 +22,7 @@
 (function () {
     'use strict';
 
-    var $log;
-    var Collection, Model, region, ts, sus;
+    var $log, Collection, Model, ts, sus, t2zs, t2vs, t2lps, fn;
 
     var linkLabelOffset = '0.35em';
 
@@ -32,8 +31,9 @@
             .domain([1, 12])
             .range([widthRatio, 12 * widthRatio])
             .clamp(true),
-        allLinkTypes = 'direct indirect optical tunnel UiDeviceLink',
-        allLinkSubTypes = 'inactive not-permitted';
+        allLinkTypes = 'direct optical tunnel UiDeviceLink',
+        allLinkSubTypes = 'not-permitted',
+        labelDim = 30;
 
     // configuration
     var linkConfig = {
@@ -52,9 +52,6 @@
         outWidth: 10
     };
 
-    var defaultLinkType = 'direct',
-        nearDist = 15;
-
     function createLink() {
 
         var linkPoints = this.linkEndPoints(this.get('epA'), this.get('epB'));
@@ -62,7 +59,6 @@
         var attrs = angular.extend({}, linkPoints, {
             key: this.get('id'),
             class: 'link',
-            weight: 1,
             srcPort: this.get('srcPort'),
             tgtPort: this.get('dstPort'),
             position: {
@@ -92,19 +88,26 @@
         return box;
     }
 
+    function isLinkOnline(node) {
+        return (node.get('nodeType') === 'region') ? true : node.get('online');
+    }
+
     function linkEndPoints(srcId, dstId) {
 
-        var sourceNode = this.region.findNodeById(srcId)
-        var targetNode = this.region.findNodeById(dstId)
+        var allNodes = this.region.nodes();
+        var sourceNode = this.region.findNodeById(this, srcId);
+        var targetNode = this.region.findNodeById(this, dstId);
 
         if (!sourceNode || !targetNode) {
-            $log.error('Node(s) not on map for link:' + srcId + ':' + dstId);
-            //logicError('Node(s) not on map for link:\n' + sMiss + dMiss);
+            $log.error('Node(s) not on map for link:' + srcId + '~' + dstId);
+            // logicError('Node(s) not on map for link:\n' + sMiss + dMiss);
             return null;
         }
 
-        this.source = sourceNode.toJSON();
-        this.target = targetNode.toJSON();
+        this.source = allNodes.indexOf(sourceNode);
+        this.target = allNodes.indexOf(targetNode);
+        this.sourceNode = sourceNode;
+        this.targetNode = targetNode;
 
         return {
             source: sourceNode,
@@ -121,15 +124,34 @@
             type: function () {
                 return this.get('type');
             },
+            svgClassName: function () {
+                return fn.classNames('link',
+                    this.nodeType,
+                    this.get('type'),
+                    {
+                        enhanced: this.get('enhanced'),
+                        selected: this.get('selected')
+                    }
+                );
+            },
             expected: function () {
                 // TODO: original code is: (s && s.expected) && (t && t.expected);
                 return true;
             },
             online: function () {
-                // TODO: remove next line
-                return true;
 
-                return both && (s && s.online) && (t && t.online);
+                var source = this.get('source'),
+                    target = this.get('target'),
+                    sourceOnline = isLinkOnline(source),
+                    targetOnline = isLinkOnline(target);
+
+                return (sourceOnline) && (targetOnline);
+            },
+            onChange: function () {
+                // Update class names when the model changes
+                if (this.el) {
+                    this.el.attr('class', this.svgClassName());
+                }
             },
             enhance: function () {
                 var data = [],
@@ -139,53 +161,105 @@
                     link.unenhance();
                 });
 
-                this.el.classed('enhanced', true);
-                point = this.locatePortLabel();
-                angular.extend(point, {
-                    id: 'topo-port-tgt',
-                    num: this.get('portB')
-                });
-                data.push(point);
+                this.set('enhanced', true);
 
-                var entering = d3.select('#topo-portLabels').selectAll('.portLabel')
-                    .data(data).enter().append('g')
-                    .classed('portLabel', true)
-                    .attr('id', function (d) { return d.id; });
+                if (showPort()) {
+                    point = this.locatePortLabel();
+                    angular.extend(point, {
+                        id: 'topo-port-tgt',
+                        num: this.get('portB')
+                    });
+                    data.push(point);
 
-                entering.each(function (d) {
-                    var el = d3.select(this),
-                        rect = el.append('rect'),
-                        text = el.append('text').text(d.num);
+                    if (this.get('portA')) {
+                        point = this.locatePortLabel(1);
+                        angular.extend(point, {
+                            id: 'topo-port-src',
+                            num: this.get('portA')
+                        });
+                        data.push(point);
+                    }
 
-                    rect.attr(rectAroundText(el))
-                        .attr('rx', 2)
-                        .attr('ry', 2);
+                    var entering = d3.select('#topo-portLabels')
+                        .selectAll('.portLabel')
+                        .data(data)
+                        .enter().append('g')
+                        .classed('portLabel', true)
+                        .attr('id', function (d) { return d.id; })
 
-                    text.attr('dy', linkLabelOffset)
-                        .attr('text-anchor', 'middle');
+                    entering.each(function (d) {
+                        var el = d3.select(this),
+                            rect = el.append('rect'),
+                            text = el.append('text').text(d.num);
 
-                    el.attr('transform', sus.translate(d.x, d.y));
-                });
+                        var rectSize = rectAroundText(el);
+
+                        rect.attr(rectSize)
+                            .attr('rx', 2)
+                            .attr('ry', 2);
+
+                        text.attr('dy', linkLabelOffset)
+                            .attr('text-anchor', 'middle');
+
+                        el.attr('transform', sus.translate(d.x, d.y));
+
+                    });
+
+                    this.setScale();
+                }
             },
             unenhance: function () {
-                this.el.classed('enhanced', false);
+                this.set('enhanced', false);
                 d3.select('#topo-portLabels').selectAll('.portLabel').remove();
             },
-            locatePortLabel: function (link, src) {
-                var offset = 32,
-                    pos = this.get('position'),
-                    nearX = src ? pos.x1 : pos.x2,
-                    nearY = src ? pos.y1 : pos.y2,
-                    farX = src ? pos.x2 : pos.x1,
-                    farY = src ? pos.y2 : pos.y1;
+            select: function () {
+                var ev = d3.event;
 
-                function dist(x, y) { return Math.sqrt(x*x + y*y); }
+                // TODO: if single selection clear selected devices, hosts, sub-regions
+                var s = Boolean(this.get('selected'));
+                // Clear all selected Items
+                _.each(this.collection.models, function (m) {
+                    m.set('selected', false);
+                });
+
+                this.set('selected', !s);
+
+                var selected = this.collection.filter(function (m) {
+                    return m.get('selected');
+                });
+
+                return selected;
+            },
+            showDetails: function () {
+                var selected = this.select(d3.event);
+
+                if (selected) {
+                    t2lps.displayLink(this);
+                } else {
+                    t2lps.hide();
+                }
+            },
+            locatePortLabel: function (src) {
+
+                var offset = 32 / (labelDim * t2zs.scale()),
+                    sourceX = this.get('position').x1,
+                    sourceY = this.get('position').y1,
+                    targetX = this.get('position').x2,
+                    targetY = this.get('position').y2,
+                    nearX = src ? sourceX : targetX,
+                    nearY = src ? sourceY : targetY,
+                    farX = src ? targetX : sourceX,
+                    farY = src ? targetY : sourceY;
+
+                function dist(x, y) {
+                    return Math.sqrt(x * x + y * y);
+                }
 
                 var dx = farX - nearX,
                     dy = farY - nearY,
-                    k = offset / dist(dx, dy);
+                    k = (32 * offset) / dist(dx, dy);
 
-                return {x: k * dx + nearX, y: k * dy + nearY};
+                return { x: k * dx + nearX, y: k * dy + nearY };
             },
             restyleLinkElement: function (immediate) {
                 // this fn's job is to look at raw links and decide what svg classes
@@ -194,8 +268,7 @@
                     el = this.el,
                     type = this.get('type'),
                     online = this.online(),
-                    modeCls = this.expected() ? 'inactive' : 'not-permitted',
-                    lw = 1.2,
+                    modeCls = this.expected() ? '-inactive' : 'not-permitted',
                     delay = immediate ? 0 : 1000;
 
                 // NOTE: understand why el is sometimes undefined on addLink events...
@@ -214,42 +287,74 @@
                     }
                     el.transition()
                         .duration(delay)
-                        .attr('stroke-width', linkScale(lw))
                         .attr('stroke', linkConfig[th].baseColor);
+
+                    this.setScale();
                 }
             },
             onEnter: function (el) {
-                var _this = this,
-                    link = d3.select(el);
+                var link = d3.select(el);
 
                 this.el = link;
-
                 this.restyleLinkElement();
 
+                // TODO: Needs improving - originally this was calculated
+                // from mouse position.
+                this.el.on('mouseover', this.enhance.bind(this));
+                this.el.on('mouseout', this.unenhance.bind(this));
+                this.el.on('click', this.showDetails.bind(this));
+
                 if (this.get('type') === 'hostLink') {
-                    sus.visible(link, api.showHosts());
+                    // sus.visible(link, api.showHosts());
+                }
+            },
+            setScale: function () {
+                var width = linkScale(widthRatio) / t2zs.scale();
+                this.el.style('stroke-width', width + 'px');
+
+                var labelScale = labelDim / (labelDim * t2zs.scale());
+
+                d3.select('#topo-portLabels')
+                    .selectAll('.portLabel')
+                    .selectAll('*')
+                    .style('transform', 'scale(' + labelScale + ')');
+
+            },
+            update: function () {
+                if (this.get('enhanced')) {
+                    this.enhance();
                 }
             }
         });
 
         var LinkCollection = Collection.extend({
-            model: LinkModel,
+            model: LinkModel
         });
 
         return new LinkCollection(data);
     }
 
+    function showPort() {
+        return t2vs.getPortHighlighting();
+    }
+
     angular.module('ovTopo2')
     .factory('Topo2LinkService',
-        ['$log', 'Topo2Collection', 'Topo2Model', 'ThemeService', 'SvgUtilService',
-
-            function (_$log_, _Collection_, _Model_, _ts_, _sus_) {
+        ['$log', 'Topo2Collection', 'Topo2Model',
+        'ThemeService', 'SvgUtilService', 'Topo2ZoomService',
+        'Topo2ViewService', 'Topo2LinkPanelService', 'FnService',
+            function (_$log_, _Collection_, _Model_, _ts_, _sus_,
+                _t2zs_, _t2vs_, _t2lps_, _fn_) {
 
                 $log = _$log_;
                 ts = _ts_;
                 sus = _sus_;
+                t2zs = _t2zs_;
+                t2vs = _t2vs_;
                 Collection = _Collection_;
                 Model = _Model_;
+                t2lps = _t2lps_;
+                fn = _fn_;
 
                 return {
                     createLinkCollection: createLinkCollection

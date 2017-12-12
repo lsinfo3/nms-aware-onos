@@ -23,16 +23,18 @@ import org.onlab.osgi.ServiceDirectory;
 import org.onlab.osgi.ServiceNotFoundException;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
+import org.onosproject.ui.GlyphConstants;
 import org.onosproject.ui.UiConnection;
 import org.onosproject.ui.UiExtensionService;
 import org.onosproject.ui.UiMessageHandler;
 import org.onosproject.ui.UiMessageHandlerFactory;
+import org.onosproject.ui.UiSessionToken;
+import org.onosproject.ui.UiTokenService;
 import org.onosproject.ui.UiTopoLayoutService;
 import org.onosproject.ui.UiTopoOverlayFactory;
 import org.onosproject.ui.impl.topo.UiTopoSession;
 import org.onosproject.ui.impl.topo.model.UiSharedTopologyModel;
 import org.onosproject.ui.model.topo.UiTopoLayout;
-import org.onosproject.ui.topo.TopoConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +54,9 @@ public class UiWebSocket
     private static final String SID = "sid";
     private static final String PAYLOAD = "payload";
     private static final String UNKNOWN = "unknown";
+    private static final String AUTHENTICATION = "authentication";
+    private static final String TOKEN = "token";
+    private static final String ERROR = "error";
 
     private static final String ID = "id";
     private static final String IP = "ip";
@@ -59,7 +64,7 @@ public class UiWebSocket
     private static final String USER = "user";
     private static final String BOOTSTRAP = "bootstrap";
 
-    public static final String TOPO = "topo";
+    private static final String TOPO = "topo";
 
     private static final long MAX_AGE_MS = 30_000;
 
@@ -81,6 +86,9 @@ public class UiWebSocket
     private Map<String, UiMessageHandler> handlers;
     private TopoOverlayCache overlayCache;
 
+    private UiSessionToken sessionToken;
+
+
     /**
      * Creates a new web-socket for serving data to the Web UI.
      *
@@ -93,6 +101,8 @@ public class UiWebSocket
         this.topoSession =
                 new UiTopoSession(this, directory.get(UiSharedTopologyModel.class),
                         directory.get(UiTopoLayoutService.class));
+
+        sessionToken = null;
     }
 
     @Override
@@ -181,6 +191,11 @@ public class UiWebSocket
 
     @Override
     public synchronized void onClose(int closeCode, String message) {
+        tokenService().revokeToken(sessionToken);
+        log.info("Session token revoked");
+
+        sessionToken = null;
+
         topoSession.destroy();
         destroyHandlersAndOverlays();
         log.info("GUI client disconnected [close-code={}, message={}]",
@@ -199,13 +214,20 @@ public class UiWebSocket
         try {
             ObjectNode message = (ObjectNode) mapper.reader().readTree(data);
             String type = message.path(EVENT).asText(UNKNOWN);
-            UiMessageHandler handler = handlers.get(type);
-            if (handler != null) {
-                log.debug("RX message: {}", message);
-                handler.process(message);
+
+            if (sessionToken == null) {
+                authenticate(type, message);
+
             } else {
-                log.warn("No GUI message handler for type {}", type);
+                UiMessageHandler handler = handlers.get(type);
+                if (handler != null) {
+                    log.debug("RX message: {}", message);
+                    handler.process(message);
+                } else {
+                    log.warn("No GUI message handler for type {}", type);
+                }
             }
+
         } catch (Exception e) {
             log.warn("Unable to parse GUI message {} due to {}", data, e);
             log.debug("Boom!!!", e);
@@ -266,8 +288,33 @@ public class UiWebSocket
                 overlayFactory.newOverlays().forEach(overlayCache::add);
             }
         });
-        log.debug("#handlers = {}, #overlays = {}", handlers.size(),
-                overlayCache.size());
+
+        log.debug("#handlers = {}, #overlays = {}", handlers.size(), overlayCache.size());
+    }
+
+    private void authenticate(String type, ObjectNode message) {
+        if (!AUTHENTICATION.equals(type)) {
+            log.warn("Non-Authenticated Web Socket: {}", message);
+            return;
+        }
+
+        String tokstr = message.path(PAYLOAD).path(TOKEN).asText(UNKNOWN);
+        UiSessionToken token = new UiSessionToken(tokstr);
+
+        if (tokenService().isTokenValid(token)) {
+            sessionToken = token;
+            log.info("Session token authenticated");
+            log.debug("WebSocket authenticated: {}", message);
+        } else {
+            log.warn("Invalid Authentication Token: {}", message);
+            sendMessage(ERROR, 0, notAuthorized(token));
+        }
+    }
+
+    private ObjectNode notAuthorized(UiSessionToken token) {
+        return mapper.createObjectNode()
+                .put("message", "invalid authentication token")
+                .put("badToken", token.toString());
     }
 
     // Destroys message handlers.
@@ -293,7 +340,7 @@ public class UiWebSocket
             ObjectNode instance = mapper.createObjectNode()
                     .put(ID, node.id().toString())
                     .put(IP, node.ip().toString())
-                    .put(TopoConstants.Glyphs.UI_ATTACHED,
+                    .put(GlyphConstants.UI_ATTACHED,
                             node.equals(service.getLocalNode()));
             instances.add(instance);
         }
@@ -304,5 +351,12 @@ public class UiWebSocket
         sendMessage(BOOTSTRAP, 0, payload);
     }
 
+    private UiTokenService tokenService() {
+        UiTokenService service = directory.get(UiTokenService.class);
+        if (service == null) {
+            log.error("Unable to reference UiTokenService");
+        }
+        return service;
+    }
 }
 

@@ -21,8 +21,8 @@ package org.onosproject.lisp.msg.types;
  * LCAF defines a canonical address format encoding used in LISP control message
  * and in the encoding of lookup keys for the LISP Mapping Database System.
  *
- * LCAF is defined in draft-ietf-lisp-lcaf-13
- * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-13
+ * LCAF is defined in draft-ietf-lisp-lcaf-20
+ * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-20
  */
 public enum LispCanonicalAddressFormatEnum {
     LIST(1),                    // AFI LIST Type
@@ -34,6 +34,7 @@ public enum LispCanonicalAddressFormatEnum {
     SECURITY(11),               // Security Key Type
     SOURCE_DEST(12),            // Source/Dest Key Type
     TRAFFIC_ENGINEERING(10),    // Explicit Locator Path Type
+    UNSPECIFIED(0),             // Unspecified Type
     UNKNOWN(-1);                // Unknown Type
 
     private byte lispCode;

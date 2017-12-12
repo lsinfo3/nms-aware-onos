@@ -3,10 +3,12 @@
 /target/
 \.iml$
 \./buck-out/
+\./\.buckd
 \./lib/BUCK
 \./lib/deps.json
 \./bucklets/maven_jar\.bucklet
 \./tools/build/libgen
+\./tools/build/onos-build-release
 \./utils/osgiwrap/
 \./tools/build/onos-validate-change-version
 \./tools/build/onos-change-version
@@ -29,3 +31,9 @@
 \./providers/bmv2/
 \./drivers/bmv2/
 \./apps/kafka-integration/
+\./pom.xml.versionsBackup
+\./tools/build/buck-publish-api
+\./tools/build/buck-plugin/BUCK
+\./core/store/primitives/resources/impl/AtomixLeaderElectorCommands.java
+\./core/store/primitives/src/main/java/org/onosproject/store/primitives/resources/impl/AtomixLeaderElectorCommands.java
+\./core/store/primitives/src/main/java/org/onosproject/store/primitives/resources/impl/AtomixAtomicCounterMapCommands.java

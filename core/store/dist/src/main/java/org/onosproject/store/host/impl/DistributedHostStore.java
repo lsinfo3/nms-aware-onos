@@ -29,6 +29,8 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
@@ -58,6 +60,7 @@ import org.onosproject.net.provider.ProviderId;
 import org.onosproject.store.AbstractStore;
 import org.onosproject.store.Timestamp;
 import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.service.EventuallyConsistentMap;
 import org.onosproject.store.service.ConsistentMap;
 import org.onosproject.store.service.DistributedPrimitive.Status;
 import org.onosproject.store.service.EventuallyConsistentMap;
@@ -67,16 +70,27 @@ import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.WallClockTimestamp;
 import org.osgi.service.component.ComponentContext;
+import org.onosproject.store.service.DistributedPrimitive.Status;
 import org.slf4j.Logger;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
+import java.util.Collection;
+import java.util.Dictionary;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
+import static com.google.common.base.Strings.isNullOrEmpty;
+import static org.onlab.util.Tools.get;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
-import static org.onlab.util.Tools.get;
 import static org.onlab.util.Tools.groupedThreads;
 import static org.onosproject.net.DefaultAnnotations.merge;
 import static org.onosproject.net.host.HostEvent.Type.HOST_ADDED;
@@ -91,8 +105,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 @Component(immediate = true)
 @Service
 public class DistributedHostStore
-    extends AbstractStore<HostEvent, HostStoreDelegate>
-    implements HostStore {
+        extends AbstractStore<HostEvent, HostStoreDelegate>
+        implements HostStore {
 
     private final Logger log = getLogger(getClass());
 
@@ -115,7 +129,9 @@ public class DistributedHostStore
     private MapEventListener<HostId, DefaultHost> hostLocationTracker =
             new HostLocationTracker();
 
+
     private EventuallyConsistentMap<HostId, Timestamp> hostsTimestamp;
+
     private ScheduledExecutorService executor;
 
     private Consumer<Status> statusChangeListener;
@@ -141,6 +157,7 @@ public class DistributedHostStore
                 .build();
 
         hostsConsistentMap.addListener(hostLocationTracker);
+
         modified(context);
 
         executor = newSingleThreadScheduledExecutor(groupedThreads("onos/hosts", "store", log));
@@ -180,9 +197,9 @@ public class DistributedHostStore
         }
     }
 
-     private void loadHostsByIp() {
+    private void loadHostsByIp() {
         hostsByIp = new ConcurrentHashMap<IpAddress, Set<Host>>();
-         hostsConsistentMap.asJavaMap().values().forEach(host -> {
+        hostsConsistentMap.asJavaMap().values().forEach(host -> {
             host.ipAddresses().forEach(ip -> {
                 Set<Host> existingHosts = hostsByIp.get(ip);
                 if (existingHosts == null) {
@@ -212,7 +229,7 @@ public class DistributedHostStore
 
         if (replaceIPs) {
             if (!Objects.equals(hostDescription.ipAddress(),
-                                existingHost.ipAddresses())) {
+                    existingHost.ipAddresses())) {
                 return true;
             }
         } else {
@@ -224,8 +241,8 @@ public class DistributedHostStore
         // check to see if any of the annotations provided by hostDescription
         // differ from those in the existing host
         return hostDescription.annotations().keys().stream()
-                    .anyMatch(k -> !Objects.equals(hostDescription.annotations().value(k),
-                                                   existingHost.annotations().value(k)));
+                .anyMatch(k -> !Objects.equals(hostDescription.annotations().value(k),
+                        existingHost.annotations().value(k)));
 
 
     }
@@ -241,39 +258,39 @@ public class DistributedHostStore
         }
 
         hostsConsistentMap.computeIf(hostId,
-                       existingHost -> shouldUpdate(existingHost, providerId, hostId,
-                                                    hostDescription, replaceIPs),
-                       (id, existingHost) -> {
-                           HostLocation location = hostDescription.location();
+                existingHost -> shouldUpdate(existingHost, providerId, hostId,
+                        hostDescription, replaceIPs),
+                (id, existingHost) -> {
+                    HostLocation location = hostDescription.location();
 
-                           final Set<IpAddress> addresses;
-                           if (existingHost == null || replaceIPs) {
-                               addresses = ImmutableSet.copyOf(hostDescription.ipAddress());
-                           } else {
-                               addresses = Sets.newHashSet(existingHost.ipAddresses());
-                               addresses.addAll(hostDescription.ipAddress());
-                           }
+                    final Set<IpAddress> addresses;
+                    if (existingHost == null || replaceIPs) {
+                        addresses = ImmutableSet.copyOf(hostDescription.ipAddress());
+                    } else {
+                        addresses = Sets.newHashSet(existingHost.ipAddresses());
+                        addresses.addAll(hostDescription.ipAddress());
+                    }
 
-                           final Annotations annotations;
-                           final boolean configured;
-                           if (existingHost != null) {
-                               annotations = merge((DefaultAnnotations) existingHost.annotations(),
-                                       hostDescription.annotations());
-                               configured = existingHost.configured();
-                           } else {
-                               annotations = hostDescription.annotations();
-                               configured = hostDescription.configured();
-                           }
+                    final Annotations annotations;
+                    final boolean configured;
+                    if (existingHost != null) {
+                        annotations = merge((DefaultAnnotations) existingHost.annotations(),
+                                hostDescription.annotations());
+                        configured = existingHost.configured();
+                    } else {
+                        annotations = hostDescription.annotations();
+                        configured = hostDescription.configured();
+                    }
 
-                           return new DefaultHost(providerId,
-                                                  hostId,
-                                                  hostDescription.hwAddress(),
-                                                  hostDescription.vlan(),
-                                                  location,
-                                                  addresses,
-                                                  configured,
-                                                  annotations);
-                       });
+                    return new DefaultHost(providerId,
+                            hostId,
+                            hostDescription.hwAddress(),
+                            hostDescription.vlan(),
+                            location,
+                            addresses,
+                            configured,
+                            annotations);
+                });
         return null;
     }
 
@@ -411,7 +428,7 @@ public class DistributedHostStore
     private void updateHostsByIp(DefaultHost host) {
         host.ipAddresses().forEach(ip -> {
             hostsByIp.compute(ip, (k, v) -> v == null ? addHosts(host)
-                                                      : updateHosts(v, host));
+                    : updateHosts(v, host));
         });
     }
 

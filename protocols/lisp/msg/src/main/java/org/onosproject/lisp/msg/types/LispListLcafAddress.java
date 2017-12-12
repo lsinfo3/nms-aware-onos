@@ -30,8 +30,8 @@ import static com.google.common.base.Preconditions.checkArgument;
 /**
  * List type LCAF address class.
  * <p>
- * List type is defined in draft-ietf-lisp-lcaf-13
- * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-13#page-21
+ * List type is defined in draft-ietf-lisp-lcaf-20
+ * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-20#page-22
  *
  * <pre>
  * {@literal
@@ -40,7 +40,7 @@ import static com.google.common.base.Preconditions.checkArgument;
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * |           AFI = 16387         |     Rsvd1     |     Flags     |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- * |   Type = 1    |     Rsvd2     |         2 + 4 + 2 + 16        |
+ * |   Type = 1    |     Rsvd2     |            Length             |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * |            AFI = 1            |       IPv4 Address ...        |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -79,7 +79,7 @@ public final class LispListLcafAddress extends LispLcafAddress {
      * Initializes list type LCAF address.
      *
      * @param reserved1 reserved1 field
-     * @param flag flag
+     * @param flag      flag
      * @param reserved2 reserved2 field
      * @param addresses a set of IPv4 and IPv6 addresses
      */
@@ -171,7 +171,7 @@ public final class LispListLcafAddress extends LispLcafAddress {
             LispAfiAddress ipv6 = reader.readFrom(byteBuf);
 
             return new LispListLcafAddress(lcafAddress.getReserved1(), lcafAddress.getReserved2(),
-                                           lcafAddress.getFlag(), ImmutableList.of(ipv4, ipv6));
+                    lcafAddress.getFlag(), ImmutableList.of(ipv4, ipv6));
         }
     }
 
@@ -186,6 +186,7 @@ public final class LispListLcafAddress extends LispLcafAddress {
         @Override
         public void writeTo(ByteBuf byteBuf, LispListLcafAddress address) throws LispWriterException {
 
+            int lcafIndex = byteBuf.writerIndex();
             LispLcafAddress.serializeCommon(byteBuf, address);
 
             LispIpv4Address.Ipv4AddressWriter v4Writer = new LispIpv4Address.Ipv4AddressWriter();
@@ -201,6 +202,8 @@ public final class LispListLcafAddress extends LispLcafAddress {
             // IPv6 address
             byteBuf.writeShort(ipv6.getAfi().getIanaCode());
             v6Writer.writeTo(byteBuf, (LispIpv6Address) ipv6);
+
+            LispLcafAddress.updateLength(lcafIndex, byteBuf);
         }
     }
 }

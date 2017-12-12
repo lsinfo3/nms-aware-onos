@@ -22,39 +22,17 @@
 (function () {
     'use strict';
 
-    var Collection, Model, is, sus, ts, t2vs;
+    var Collection, Model;
 
     var remappedDeviceTypes = {
+        switch: 'm_switch',
         virtual: 'cord'
     };
-
-    // configuration
-    var devIconDim = 36,
-        labelPad = 10,
-        hostRadius = 14,
-        badgeConfig = {
-            radius: 12,
-            yoff: 5,
-            gdelta: 10
-        },
-        halfDevIcon = devIconDim / 2,
-        devBadgeOff = { dx: -halfDevIcon, dy: -halfDevIcon },
-        hostBadgeOff = { dx: -hostRadius, dy: -hostRadius },
-        status = {
-            i: 'badgeInfo',
-            w: 'badgeWarn',
-            e: 'badgeError'
-        },
-        deviceLabelIndex = 0;
 
     function createDeviceCollection(data, region) {
 
         var DeviceCollection = Collection.extend({
-            model: Model,
-            comparator: function(a, b) {
-                var order = region.get('layerOrder');
-                return order.indexOf(a.get('layer')) - order.indexOf(b.get('layer'));
-            }
+            model: Model
         });
 
         var devices = [];
@@ -64,97 +42,67 @@
             });
         });
 
-        var deviceCollection = new DeviceCollection(devices);
-        deviceCollection.sort();
-
-        return deviceCollection;
-    }
-
-    function mapDeviceTypeToGlyph(type) {
-        return remappedDeviceTypes[type] || type || 'unknown';
-    }
-
-    function iconBox(dim, labelWidth) {
-        return {
-            x: -dim / 2,
-            y: -dim / 2,
-            width: dim + labelWidth,
-            height: dim
-        }
-    }
-
-    // note: these are the device icon colors without affinity (no master)
-    var dColTheme = {
-        light: {
-            online: '#444444',
-            offline: '#cccccc'
-        },
-        dark: {
-            // TODO: theme
-            online: '#444444',
-            offline: '#cccccc'
-        }
-    };
-
-    function deviceGlyphColor(d) {
-        var o = this.node.online,
-            id = this.node.master, // TODO: This should be from node.master
-            otag = o ? 'online' : 'offline';
-        return o ? sus.cat7().getColor(id, 0, ts.theme())
-                 : dColTheme[ts.theme()][otag];
-    }
-
-    function setDeviceColor() {
-        this.el.select('use')
-            .style('fill', this.deviceGlyphColor());
+        return new DeviceCollection(devices);
     }
 
     angular.module('ovTopo2')
     .factory('Topo2DeviceService',
-        ['Topo2Collection', 'Topo2NodeModel', 'IconService', 'SvgUtilService',
-        'ThemeService', 'Topo2ViewService',
+        ['Topo2Collection', 'Topo2NodeModel', 'Topo2DeviceDetailsPanel',
+            function (_c_, _nm_, detailsPanel) {
 
-            function (_Collection_, _NodeModel_, _is_, _sus_, _ts_, classnames, _t2vs_) {
+                Collection = _c_;
 
-                t2vs = _t2vs_;
-                is = _is_;
-                sus = _sus_;
-                ts = _ts_;
-                Collection = _Collection_;
-
-                Model = _NodeModel_.extend({
+                Model = _nm_.extend({
                     initialize: function () {
-                        this.set('weight', 0);
-                        this.constructor.__super__.initialize.apply(this, arguments);
+                        this.super = this.constructor.__super__;
+                        this.super.initialize.apply(this, arguments);
+                    },
+                    events: {
+                        'click': 'onClick'
+                    },
+                    onChange: function () {
+
+                        // Update class names when the model changes
+                        if (this.el) {
+                            this.el.attr('class', this.svgClassName());
+                        }
                     },
                     nodeType: 'device',
-                    deviceGlyphColor: deviceGlyphColor,
-                    mapDeviceTypeToGlyph: mapDeviceTypeToGlyph,
-                    setDeviceColor: setDeviceColor,
-                    onEnter: function (el) {
-
-                        var node = d3.select(el),
-                            glyphId = mapDeviceTypeToGlyph(this.get('type')),
-                            label = this.trimLabel(this.label()),
-                            glyph, labelWidth;
-
-                        this.el = node;
-
-                        // Label
-                        var labelElements = this.addLabelElements(label);
-                        labelWidth = label ? this.computeLabelWidth(node) : 0;
-                        labelElements.rect.attr(iconBox(devIconDim, labelWidth));
-
-                        // Icon
-                        glyph = is.addDeviceIcon(node, glyphId, devIconDim);
-                        glyph.attr(iconBox(devIconDim, 0));
-
-                        node.attr('transform', sus.translate(-halfDevIcon, -halfDevIcon));
-                        this.render();
+                    icon: function () {
+                        var type = this.get('type');
+                        return remappedDeviceTypes[type] || type || 'unknown';
                     },
-                    onExit: function () {},
-                    render: function () {
-                        this.setDeviceColor();
+                    onClick: function () {
+
+                        var selected = this.select(d3.event);
+
+                        if (_.isArray(selected) && selected.length > 0) {
+                            if (selected.length === 1) {
+                                var model = selected[0],
+                                    id = model.get('id'),
+                                    nodeType = model.get('nodeType');
+                                detailsPanel.updateDetails(id, nodeType);
+                                detailsPanel.show();
+                            } else {
+                                // Multi Panel
+                                detailsPanel.showMulti(selected);
+                            }
+                        } else {
+                            detailsPanel.hide();
+                        }
+                    },
+                    onExit: function () {
+                        var node = this.el;
+                        node.select('use')
+                            .style('opacity', 0.5)
+                            .transition()
+                            .duration(800)
+                            .style('opacity', 0);
+
+                        node.selectAll('rect')
+                            .style('stroke-fill', '#555')
+                            .style('fill', '#888')
+                            .style('opacity', 0.5);
                     }
                 });
 

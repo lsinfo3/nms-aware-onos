@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.onlab.osgi.ServiceDirectory;
+import org.onlab.packet.IpAddress;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.incubator.net.PortStatisticsService;
@@ -29,6 +30,7 @@ import org.onosproject.mastership.MastershipService;
 import org.onosproject.net.Annotated;
 import org.onosproject.net.Annotations;
 import org.onosproject.net.Device;
+import org.onosproject.net.Host;
 import org.onosproject.net.device.DeviceService;
 import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.host.HostService;
@@ -36,6 +38,7 @@ import org.onosproject.net.intent.IntentService;
 import org.onosproject.net.link.LinkService;
 import org.onosproject.net.statistic.StatisticService;
 import org.onosproject.net.topology.TopologyService;
+import org.onosproject.ui.JsonUtils;
 import org.onosproject.ui.model.topo.UiClusterMember;
 import org.onosproject.ui.model.topo.UiDevice;
 import org.onosproject.ui.model.topo.UiHost;
@@ -215,13 +218,8 @@ class Topo2Jsonifier {
             return payload;
         }
         payload.put("id", region.idAsString());
-        if (subRegions != null) {
-            payload.set("subregions", jsonSubRegions(subRegions));
-        }
-
-        if (links != null) {
-            payload.set("links", jsonLinks(links));
-        }
+        payload.set("subregions", jsonSubRegions(subRegions));
+        payload.set("links", jsonLinks(links));
 
         List<String> layerTags = region.layerOrder();
         List<Set<UiNode>> splitDevices = splitByLayer(layerTags, region.devices());
@@ -331,6 +329,17 @@ class Topo2Jsonifier {
         }
     }
 
+    private void addIps(ObjectNode node, Host h) {
+        Set<IpAddress> ips = h.ipAddresses();
+
+        ArrayNode a = arrayNode();
+        for (IpAddress ip : ips) {
+            a.add(ip.toString());
+        }
+
+        node.set("ips", a);
+    }
+
     // return list of string values from annotated instance, for given keys
     // return null if any keys are not present
     List<String> getAnnotValues(Annotated a, String... annotKeys) {
@@ -355,11 +364,18 @@ class Topo2Jsonifier {
     }
 
     private ObjectNode json(UiHost host) {
-        return objectNode()
+        ObjectNode node = objectNode()
                 .put("id", host.idAsString())
                 .put("nodeType", HOST)
                 .put("layer", host.layer());
         // TODO: complete host details
+        Host h = host.backingHost();
+
+        addIps(node, h);
+        addGeoLocation(node, h);
+        addMetaUi(node, host.idAsString());
+
+        return node;
     }
 
     private ObjectNode json(UiSynthLink sLink) {
@@ -382,12 +398,16 @@ class Topo2Jsonifier {
 
 
     private ObjectNode jsonClosedRegion(UiRegion region) {
-        return objectNode()
+        ObjectNode node = objectNode()
                 .put("id", region.idAsString())
                 .put("name", region.name())
                 .put("nodeType", REGION)
-                .put("nDevs", region.deviceCount());
+                .put("nDevs", region.deviceCount())
+                .put("nHosts", region.hostCount());
         // TODO: complete closed-region details
+
+        addMetaUi(node, region.idAsString());
+        return node;
     }
 
     /**
@@ -481,5 +501,19 @@ class Topo2Jsonifier {
         }
 
         return splitList;
+    }
+
+    /**
+     * Stores the memento for an element.
+     * This method assumes the payload has an id String, memento ObjectNode
+     *
+     * @param payload event payload
+     */
+    void updateMeta(ObjectNode payload) {
+
+        String id = JsonUtils.string(payload, "id");
+        metaUi.put(id, JsonUtils.node(payload, "memento"));
+
+        log.debug("Storing metadata for {}", id);
     }
 }

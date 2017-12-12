@@ -127,7 +127,7 @@ public interface HostStore extends Store<HostEvent, HostStoreDelegate> {
     Set<Host> getConnectedHosts(DeviceId deviceId);
 
     /**
-     * Returns the recent host updated time.
+     * Returns the last host updated time.
      *
      * @param hostId host identifier
      * @return recent host updated time

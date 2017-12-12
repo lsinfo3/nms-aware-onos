@@ -40,6 +40,7 @@ import org.onosproject.net.intent.Intent;
 import org.onosproject.net.intent.IntentCompiler;
 import org.onosproject.net.intent.PathIntent;
 import org.onosproject.net.resource.ResourceService;
+import org.onosproject.net.resource.impl.LabelAllocator;
 import org.slf4j.Logger;
 
 import java.util.LinkedList;
@@ -73,6 +74,7 @@ public class PathIntentFlowObjectiveCompiler
     public void activate() {
         appId = coreService.registerApplication("org.onosproject.net.intent");
         registrator.registerCompiler(PathIntent.class, this, true);
+        labelAllocator = new LabelAllocator(resourceService);
     }
 
     @Deactivate
@@ -87,7 +89,11 @@ public class PathIntentFlowObjectiveCompiler
         List<DeviceId> devices = new LinkedList<>();
         compile(this, intent, objectives, devices);
 
-        return ImmutableList.of(new FlowObjectiveIntent(appId, devices, objectives, intent.resources()));
+        return ImmutableList.of(new FlowObjectiveIntent(appId,
+                                                        intent.key(),
+                                                        devices,
+                                                        objectives,
+                                                        intent.resources()));
     }
 
     @Override

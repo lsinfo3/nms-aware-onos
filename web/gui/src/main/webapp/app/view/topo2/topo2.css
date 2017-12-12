@@ -52,17 +52,76 @@
 }
 
 #breadcrumbs {
+    font-size: 13px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #c7c7c0;
     position: absolute;
-    padding: 10px 30px;
-    top: 54px;
+    padding: 10px 20px;
+    left: 0;
+    top: 48px;
     width: 100%;
 }
 
 #breadcrumbs .breadcrumb {
     display: inline-block;
-    margin-right: 20px;
+    margin-right: 5px;
 }
 
-.floatpanel {
+#breadcrumbs .breadcrumb a {
+    cursor: pointer;
+}
+
+#breadcrumbs .breadcrumb:after {
+    content: '»';
+    pointer-events: none;
+    color: #353535;
+    line-height: 20px;
+    margin-left: 5px;
+}
+
+#breadcrumbs .breadcrumb:last-child a {
+    pointer-events: none;
+    font-weight: 600;
+    color: #757575;
+}
+
+#breadcrumbs .breadcrumb:last-child:after {
+    display: none;
+}
+
+#topo2-p-instance.floatpanel {
     top: 104px;
 }
+
+
+/* -- Base Device Styles -- */
+#ov-topo2 svg .node {
+    cursor: pointer;
+    fill-rule: evenodd;
+}
+
+/* --- Topo Summary Panel --- */
+
+#topo2-p-summary {
+    padding: 16px;
+}
+
+
+/* --- Topo Detail Panel --- */
+
+#topo2-p-detail {
+    padding: 16px;
+    top: 370px;
+}
+html[data-platform='iPad'] #topo2-p-detail {
+    top: 386px;
+}
+
+#topo2-p-detail .actionBtns .actionBtn {
+    display: inline-block;
+}
+#topo2-p-detail .actionBtns .actionBtn svg {
+    width: 28px;
+    height: 28px;
+}
+

@@ -431,8 +431,6 @@ public class DefaultOvsdbClient implements OvsdbProviderService, OvsdbClientServ
         port.setName(portName);
         if (portUuid == null) {
             insertConfig(PORT, UUID, BRIDGE, PORTS, bridgeUuid, port.getRow());
-        } else {
-            updateConfig(PORT, UUID, portUuid, port.getRow());
         }
     }
 
@@ -736,7 +734,7 @@ public class DefaultOvsdbClient implements OvsdbProviderService, OvsdbClientServ
     /**
      * Drops the configuration for mirror.
      *
-     * @param mirroringName
+     * @param mirroringName name of mirror to drop
      */
     @Override
     public void dropMirror(MirroringName mirroringName) {

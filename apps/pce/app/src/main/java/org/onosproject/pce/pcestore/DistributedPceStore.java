@@ -77,6 +77,8 @@ public class DistributedPceStore implements PceStore {
     private static final Serializer SERIALIZER = Serializer
             .using(new KryoNamespace.Builder().register(KryoNamespaces.API)
                     .register(PcePathInfo.class)
+                    .register(ExplicitPathInfo.class)
+                    .register(ExplicitPathInfo.Type.class)
                     .register(CostConstraint.class)
                     .register(CostConstraint.Type.class)
                     .register(BandwidthConstraint.class)
@@ -207,7 +209,10 @@ public class DistributedPceStore implements PceStore {
     @Override
     public List<ExplicitPathInfo> getTunnelNameExplicitPathInfoMap(String tunnelName) {
         checkNotNull(tunnelName);
-        return tunnelNameExplicitPathInfoMap.get(tunnelName).value();
+        if (tunnelNameExplicitPathInfoMap.get(tunnelName) != null) {
+            return tunnelNameExplicitPathInfoMap.get(tunnelName).value();
+        }
+        return null;
     }
 
 }

@@ -16,6 +16,7 @@
 
 package org.onosproject.net.region.impl;
 
+import com.google.common.collect.ImmutableSet;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
@@ -25,6 +26,7 @@ import org.apache.felix.scr.annotations.Service;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.event.AbstractListenerManager;
 import org.onosproject.net.DeviceId;
+import org.onosproject.net.HostId;
 import org.onosproject.net.region.Region;
 import org.onosproject.net.region.RegionAdminService;
 import org.onosproject.net.region.RegionEvent;
@@ -147,6 +149,14 @@ public class RegionManager extends AbstractListenerManager<RegionEvent, RegionLi
         checkPermission(REGION_READ);
         checkNotNull(regionId, REGION_ID_NULL);
         return store.getRegionDevices(regionId);
+    }
+
+    @Override
+    public Set<HostId> getRegionHosts(RegionId regionId) {
+        checkPermission(REGION_READ);
+        checkNotNull(regionId, REGION_ID_NULL);
+        // TODO: compute hosts from region devices
+        return ImmutableSet.of();
     }
 
 }

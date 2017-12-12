@@ -17,6 +17,9 @@
 package org.onosproject.store.primitives.resources.impl;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status.ILLEGAL_MODIFICATION;
+import static org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status.INVALID_PATH;
+import static org.onosproject.store.primitives.resources.impl.DocumentTreeUpdateResult.Status.OK;
 import io.atomix.copycat.client.CopycatClient;
 import io.atomix.resource.AbstractResource;
 import io.atomix.resource.ResourceTypeInfo;
@@ -24,17 +27,18 @@ import io.atomix.resource.ResourceTypeInfo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 import org.onlab.util.Match;
 import org.onlab.util.Tools;
-import org.onosproject.store.primitives.resources.impl.AtomixConsistentMapCommands.Unlisten;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Clear;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Get;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.GetChildren;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Listen;
+import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Unlisten;
 import org.onosproject.store.primitives.resources.impl.AtomixDocumentTreeCommands.Update;
 import org.onosproject.store.service.AsyncDocumentTree;
 import org.onosproject.store.service.DocumentPath;
@@ -53,7 +57,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
     implements AsyncDocumentTree<byte[]> {
 
-    private final Map<DocumentTreeListener<byte[]>, Executor> eventListeners = new HashMap<>();
+    private final Map<DocumentTreeListener<byte[]>, InternalListener> eventListeners = new HashMap<>();
     public static final String CHANGE_SUBJECT = "changeEvents";
 
     protected AtomixDocumentTree(CopycatClient client, Properties options) {
@@ -105,11 +109,11 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
 
     @Override
     public CompletableFuture<Versioned<byte[]>> set(DocumentPath path, byte[] value) {
-        return client.submit(new Update(checkNotNull(path), checkNotNull(value), Match.any(), Match.any()))
+        return client.submit(new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.any()))
                 .thenCompose(result -> {
-                    if (result.status() == DocumentTreeUpdateResult.Status.INVALID_PATH) {
+                    if (result.status() == INVALID_PATH) {
                         return Tools.exceptionalFuture(new NoSuchDocumentPathException());
-                    } else if (result.status() == DocumentTreeUpdateResult.Status.ILLEGAL_MODIFICATION) {
+                    } else if (result.status() == ILLEGAL_MODIFICATION) {
                         return Tools.exceptionalFuture(new IllegalDocumentModificationException());
                     } else {
                         return CompletableFuture.completedFuture(result);
@@ -119,31 +123,46 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
 
     @Override
     public CompletableFuture<Boolean> create(DocumentPath path, byte[] value) {
-        return client.submit(new Update(checkNotNull(path), checkNotNull(value), Match.ifNull(), Match.any()))
-                .thenCompose(result -> {
-                    if (result.status() == DocumentTreeUpdateResult.Status.INVALID_PATH) {
-                        return Tools.exceptionalFuture(new NoSuchDocumentPathException());
-                    } else if (result.status() == DocumentTreeUpdateResult.Status.ILLEGAL_MODIFICATION) {
+        return createInternal(path, value)
+                .thenCompose(status -> {
+                    if (status == ILLEGAL_MODIFICATION) {
                         return Tools.exceptionalFuture(new IllegalDocumentModificationException());
-                    } else {
-                        return CompletableFuture.completedFuture(result);
                     }
-                }).thenApply(result -> result.created());
+                    return CompletableFuture.completedFuture(true);
+                });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> createRecursive(DocumentPath path, byte[] value) {
+        return createInternal(path, value)
+                .thenCompose(status -> {
+                    if (status == ILLEGAL_MODIFICATION) {
+                        return createRecursive(path.parent(), null)
+                                    .thenCompose(r -> createInternal(path, value).thenApply(v -> true));
+                    }
+                    return CompletableFuture.completedFuture(status == OK);
+                });
     }
 
     @Override
     public CompletableFuture<Boolean> replace(DocumentPath path, byte[] newValue, long version) {
-        return client.submit(new Update(checkNotNull(path), newValue, Match.any(), Match.ifValue(version)))
+        return client.submit(new Update(checkNotNull(path),
+                                        Optional.ofNullable(newValue),
+                                        Match.any(),
+                                        Match.ifValue(version)))
                 .thenApply(result -> result.updated());
     }
 
     @Override
     public CompletableFuture<Boolean> replace(DocumentPath path, byte[] newValue, byte[] currentValue) {
-        return client.submit(new Update(checkNotNull(path), newValue, Match.ifValue(currentValue), Match.any()))
+        return client.submit(new Update(checkNotNull(path),
+                                        Optional.ofNullable(newValue),
+                                        Match.ifValue(currentValue),
+                                        Match.any()))
                 .thenCompose(result -> {
-                    if (result.status() == DocumentTreeUpdateResult.Status.INVALID_PATH) {
+                    if (result.status() == INVALID_PATH) {
                         return Tools.exceptionalFuture(new NoSuchDocumentPathException());
-                    } else if (result.status() == DocumentTreeUpdateResult.Status.ILLEGAL_MODIFICATION) {
+                    } else if (result.status() == ILLEGAL_MODIFICATION) {
                         return Tools.exceptionalFuture(new IllegalDocumentModificationException());
                     } else {
                         return CompletableFuture.completedFuture(result);
@@ -156,11 +175,11 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
         if (path.equals(DocumentPath.from("root"))) {
             return Tools.exceptionalFuture(new IllegalDocumentModificationException());
         }
-        return client.submit(new Update(checkNotNull(path), null, Match.ifNotNull(), Match.any()))
+        return client.submit(new Update(checkNotNull(path), null, Match.any(), Match.ifNotNull()))
                 .thenCompose(result -> {
-                    if (result.status() == DocumentTreeUpdateResult.Status.INVALID_PATH) {
+                    if (result.status() == INVALID_PATH) {
                         return Tools.exceptionalFuture(new NoSuchDocumentPathException());
-                    } else if (result.status() == DocumentTreeUpdateResult.Status.ILLEGAL_MODIFICATION) {
+                    } else if (result.status() == ILLEGAL_MODIFICATION) {
                         return Tools.exceptionalFuture(new IllegalDocumentModificationException());
                     } else {
                         return CompletableFuture.completedFuture(result);
@@ -172,23 +191,28 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
     public CompletableFuture<Void> addListener(DocumentPath path, DocumentTreeListener<byte[]> listener) {
         checkNotNull(path);
         checkNotNull(listener);
+        InternalListener internalListener = new InternalListener(path, listener, MoreExecutors.directExecutor());
         // TODO: Support API that takes an executor
-        if (isListening()) {
-            eventListeners.putIfAbsent(listener, MoreExecutors.directExecutor());
-            return CompletableFuture.completedFuture(null);
-        } else {
+        if (!eventListeners.containsKey(listener)) {
             return client.submit(new Listen(path))
-                         .thenRun(() -> eventListeners.put(listener, MoreExecutors.directExecutor()));
+                         .thenRun(() -> eventListeners.put(listener, internalListener));
         }
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public CompletableFuture<Void> removeListener(DocumentTreeListener<byte[]> listener) {
         checkNotNull(listener);
-        if (eventListeners.remove(listener) != null && eventListeners.isEmpty()) {
-            return client.submit(new Unlisten()).thenApply(v -> null);
+        InternalListener internalListener = eventListeners.remove(listener);
+        if  (internalListener != null && eventListeners.isEmpty()) {
+            return client.submit(new Unlisten(internalListener.path)).thenApply(v -> null);
         }
         return CompletableFuture.completedFuture(null);
+    }
+
+    private CompletableFuture<DocumentTreeUpdateResult.Status> createInternal(DocumentPath path, byte[] value) {
+        return client.submit(new Update(checkNotNull(path), Optional.ofNullable(value), Match.any(), Match.ifNull()))
+                     .thenApply(result -> result.status());
     }
 
     private boolean isListening() {
@@ -196,7 +220,26 @@ public class AtomixDocumentTree extends AbstractResource<AtomixDocumentTree>
     }
 
     private void processTreeUpdates(List<DocumentTreeEvent<byte[]>> events) {
-        events.forEach(event ->
-            eventListeners.forEach((listener, executor) -> executor.execute(() -> listener.event(event))));
+        events.forEach(event -> eventListeners.values().forEach(listener -> listener.event(event)));
+    }
+
+    private class InternalListener implements DocumentTreeListener<byte[]> {
+
+        private final DocumentPath path;
+        private final DocumentTreeListener<byte[]> listener;
+        private final Executor executor;
+
+        public InternalListener(DocumentPath path, DocumentTreeListener<byte[]> listener, Executor executor) {
+            this.path = path;
+            this.listener = listener;
+            this.executor = executor;
+        }
+
+        @Override
+        public void event(DocumentTreeEvent<byte[]> event) {
+            if (event.path().isDescendentOf(path)) {
+                executor.execute(() -> listener.event(event));
+            }
+        }
     }
 }

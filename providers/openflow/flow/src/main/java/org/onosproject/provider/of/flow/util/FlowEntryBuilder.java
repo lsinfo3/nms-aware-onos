@@ -60,6 +60,7 @@ import org.projectfloodlight.openflow.protocol.action.OFActionExperimenter;
 import org.projectfloodlight.openflow.protocol.action.OFActionGroup;
 import org.projectfloodlight.openflow.protocol.action.OFActionOutput;
 import org.projectfloodlight.openflow.protocol.action.OFActionPopMpls;
+import org.projectfloodlight.openflow.protocol.action.OFActionPushVlan;
 import org.projectfloodlight.openflow.protocol.action.OFActionSetDlDst;
 import org.projectfloodlight.openflow.protocol.action.OFActionSetDlSrc;
 import org.projectfloodlight.openflow.protocol.action.OFActionSetField;
@@ -82,6 +83,7 @@ import org.projectfloodlight.openflow.types.CircuitSignalID;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.IPv6Address;
 import org.projectfloodlight.openflow.types.Masked;
+import org.projectfloodlight.openflow.types.OFBooleanValue;
 import org.projectfloodlight.openflow.types.OFVlanVidMatch;
 import org.projectfloodlight.openflow.types.OduSignalID;
 import org.projectfloodlight.openflow.types.TransportPort;
@@ -400,7 +402,8 @@ public class FlowEntryBuilder {
                     builder.popVlan();
                     break;
                 case PUSH_VLAN:
-                    builder.pushVlan();
+                    OFActionPushVlan pushVlan = (OFActionPushVlan) act;
+                    builder.pushVlan(new EthType((short) pushVlan.getEthertype().getValue()));
                     break;
                 case SET_TP_DST:
                 case SET_TP_SRC:
@@ -427,7 +430,7 @@ public class FlowEntryBuilder {
         return configureTreatmentBuilder(actions, builder, driverHandler, deviceId);
     }
 
-
+    // CHECKSTYLE IGNORE MethodLength FOR NEXT 1 LINES
     private static void handleSetField(TrafficTreatment.Builder builder,
                                        OFActionSetField action,
                                        DriverHandler driverHandler,
@@ -438,7 +441,6 @@ public class FlowEntryBuilder {
         } else {
             treatmentInterpreter = null;
         }
-
         OFOxm<?> oxm = action.getField();
         switch (oxm.getMatchField().id) {
         case VLAN_PCP:
@@ -488,8 +490,8 @@ public class FlowEntryBuilder {
             break;
         case MPLS_BOS:
             @SuppressWarnings("unchecked")
-            OFOxm<U8> mplsBos = (OFOxm<U8>) oxm;
-            builder.setMplsBos(mplsBos.getValue() != U8.ZERO);
+            OFOxm<OFBooleanValue> mplsBos = (OFOxm<OFBooleanValue>) oxm;
+            builder.setMplsBos(mplsBos.getValue().getValue());
             break;
         case TUNNEL_ID:
             @SuppressWarnings("unchecked")
@@ -576,6 +578,19 @@ public class FlowEntryBuilder {
             @SuppressWarnings("unchecked")
             OFOxm<IPv4Address> arpspa = (OFOxm<IPv4Address>) oxm;
             builder.setArpSpa(Ip4Address.valueOf(arpspa.getValue().getInt()));
+            break;
+        case OFDPA_MPLS_TYPE:
+        case OFDPA_OVID:
+        case OFDPA_MPLS_L2_PORT:
+        case OFDPA_QOS_INDEX:
+            if (treatmentInterpreter != null) {
+                try {
+                    builder.extension(treatmentInterpreter.mapAction(action), deviceId);
+                    break;
+                } catch (UnsupportedOperationException e) {
+                    log.warn("Unsupported action extension");
+                }
+            }
             break;
         case ARP_THA:
         case ARP_TPA:
@@ -945,6 +960,30 @@ public class FlowEntryBuilder {
                         builder.extension(selectorInterpreter.mapOxm(oxm), deviceId);
                     } catch (UnsupportedOperationException e) {
                         log.debug(e.getMessage());
+                    }
+                }
+                break;
+            case OFDPA_OVID:
+                if (selectorInterpreter != null &&
+                        selectorInterpreter.supported(ExtensionSelectorTypes.OFDPA_MATCH_OVID.type())) {
+                    if (match.getVersion().equals(OFVersion.OF_13)) {
+                        OFOxm oxm = ((OFMatchV3) match).getOxmList().get(MatchField.OFDPA_OVID);
+                        builder.extension(selectorInterpreter.mapOxm(oxm),
+                                          deviceId);
+                    } else {
+                        break;
+                    }
+                }
+                break;
+            case OFDPA_MPLS_L2_PORT:
+                if (selectorInterpreter != null &&
+                        selectorInterpreter.supported(ExtensionSelectorTypes.OFDPA_MATCH_MPLS_L2_PORT.type())) {
+                    if (match.getVersion().equals(OFVersion.OF_13)) {
+                        OFOxm oxm = ((OFMatchV3) match).getOxmList().get(MatchField.OFDPA_MPLS_L2_PORT);
+                        builder.extension(selectorInterpreter.mapOxm(oxm),
+                                          deviceId);
+                    } else {
+                        break;
                     }
                 }
                 break;

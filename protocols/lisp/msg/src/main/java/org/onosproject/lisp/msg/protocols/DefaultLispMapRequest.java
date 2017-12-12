@@ -29,14 +29,14 @@ import java.util.List;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static org.onosproject.lisp.msg.types.LispAfiAddress.AfiAddressWriter;
 import static org.onosproject.lisp.msg.protocols.LispEidRecord.EidRecordWriter;
+import static org.onosproject.lisp.msg.types.LispAfiAddress.AfiAddressWriter;
 
 /**
  * Default LISP map request message class.
  */
-public final class DefaultLispMapRequest implements LispMapRequest {
+public final class DefaultLispMapRequest extends AbstractLispMessage
+        implements LispMapRequest {
 
     private final long nonce;
     private final LispAfiAddress sourceEid;
@@ -48,6 +48,11 @@ public final class DefaultLispMapRequest implements LispMapRequest {
     private final boolean smr;
     private final boolean pitr;
     private final boolean smrInvoked;
+
+    static final RequestWriter WRITER;
+    static {
+        WRITER = new RequestWriter();
+    }
 
     /**
      * A private constructor that protects object instantiation from external.
@@ -85,8 +90,8 @@ public final class DefaultLispMapRequest implements LispMapRequest {
     }
 
     @Override
-    public void writeTo(ByteBuf byteBuf) {
-        // TODO: serialize LispMapRequest message
+    public void writeTo(ByteBuf byteBuf) throws LispWriterException {
+        WRITER.writeTo(byteBuf, this);
     }
 
     @Override
@@ -275,7 +280,6 @@ public final class DefaultLispMapRequest implements LispMapRequest {
         @Override
         public LispMapRequest build() {
 
-            checkNotNull(sourceEid, "Must have a source EID");
             checkArgument((itrRlocs != null) && (itrRlocs.size() > 0), "Must have an ITR RLOC entry");
 
             return new DefaultLispMapRequest(nonce, sourceEid, itrRlocs, eidRecords,
@@ -339,7 +343,7 @@ public final class DefaultLispMapRequest implements LispMapRequest {
 
             // deserialize a collection of RLOC addresses
             List<LispAfiAddress> itrRlocs = Lists.newArrayList();
-            for (int i = 0; i < irc; i++) {
+            for (int i = 0; i < irc + 1; i++) {
                 itrRlocs.add(new LispAfiAddress.AfiAddressReader().readFrom(byteBuf));
             }
 
@@ -369,7 +373,6 @@ public final class DefaultLispMapRequest implements LispMapRequest {
      */
     public static final class RequestWriter implements LispMessageWriter<LispMapRequest> {
 
-        private static final int REQUEST_MSG_TYPE = 1;
         private static final int REQUEST_SHIFT_BIT = 4;
 
         private static final int AUTHORITATIVE_SHIFT_BIT = 3;
@@ -386,7 +389,7 @@ public final class DefaultLispMapRequest implements LispMapRequest {
         public void writeTo(ByteBuf byteBuf, LispMapRequest message) throws LispWriterException {
 
             // specify LISP message type
-            byte msgType = (byte) (REQUEST_MSG_TYPE << REQUEST_SHIFT_BIT);
+            byte msgType = (byte) (LispType.LISP_MAP_REQUEST.getTypeCode() << REQUEST_SHIFT_BIT);
 
             // authoritative flag
             byte authoritative = DISABLE_BIT;
@@ -429,7 +432,7 @@ public final class DefaultLispMapRequest implements LispMapRequest {
             byteBuf.writeByte((byte) (pitr + smrInvoked));
 
             // ITR Rloc count
-            byteBuf.writeByte((byte) message.getItrRlocs().size());
+            byteBuf.writeByte((byte) message.getItrRlocs().size() - 1);
 
             // record count
             byteBuf.writeByte(message.getEids().size());

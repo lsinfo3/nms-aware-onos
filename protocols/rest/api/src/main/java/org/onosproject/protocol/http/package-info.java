@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 /**
- * HTTP Protocol Library.
+ * @author onos
+ *
  */
 package org.onosproject.protocol.http;

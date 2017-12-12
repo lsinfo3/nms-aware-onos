@@ -24,18 +24,14 @@
     'use strict';
 
     // references to injected services
-    var $scope, $log, $loc,
-        fs, mast, ks, zs,
-        gs, ms, sus, flash,
-        wss, ps, th,
-        t2es, t2fs, t2is, t2bcs;
+    var $scope, $log, fs, mast, ks,
+        gs, sus, ps, t2es, t2fs, t2is, t2bcs, t2kcs, t2ms, t2mcs, t2zs;
 
     // DOM elements
-    var ovtopo2, svg, defs, zoomLayer, mapG, spriteG, forceG, noDevsLayer;
+    var ovtopo2, svg, defs, zoomLayer, forceG;
 
     // Internal state
-    var zoomer, actionMap;
-
+    var zoomer;
 
     // --- Glyphs, Icons, and the like -----------------------------------
 
@@ -66,15 +62,13 @@
         var sc = zoomer.scale(),
             tr = zoomer.translate();
 
-        ps.setPrefs('topo_zoom', {tx:tr[0], ty:tr[1], sc:sc});
-
-        // keep the map lines constant width while zooming
-        mapG.style('stroke-width', (2.0 / sc) + 'px');
+        ps.setPrefs('topo_zoom', { tx: tr[0], ty: tr[1], sc: sc });
     }
 
     function setUpZoom() {
         zoomLayer = svg.append('g').attr('id', 'topo-zoomlayer');
-        zoomer = zs.createZoomer({
+
+        zoomer = t2zs.createZoomer({
             svg: svg,
             zoomLayer: zoomLayer,
             zoomEnabled: zoomEnabled,
@@ -82,26 +76,28 @@
         });
     }
 
-
     // === Controller Definition -----------------------------------------
 
     angular.module('ovTopo2', ['onosUtil', 'onosSvg', 'onosRemote'])
     .controller('OvTopo2Ctrl',
         ['$scope', '$log', '$location',
-        'FnService', 'MastService', 'KeyService', 'ZoomService',
+        'FnService', 'MastService', 'KeyService',
         'GlyphService', 'MapService', 'SvgUtilService', 'FlashService',
         'WebSocketService', 'PrefsService', 'ThemeService',
         'Topo2EventService', 'Topo2ForceService', 'Topo2InstanceService',
-        'Topo2BreadcrumbService',
+        'Topo2BreadcrumbService', 'Topo2KeyCommandService', 'Topo2MapService',
+        'Topo2MapConfigService', 'Topo2ZoomService',
+        'Topo2SummaryPanelService', 'Topo2DeviceDetailsPanel',
 
         function (_$scope_, _$log_, _$loc_,
-            _fs_, _mast_, _ks_, _zs_,
+            _fs_, _mast_, _ks_,
             _gs_, _ms_, _sus_, _flash_,
             _wss_, _ps_, _th_,
-            _t2es_, _t2fs_, _t2is_, _t2bcs_) {
+            _t2es_, _t2fs_, _t2is_, _t2bcs_, _t2kcs_, _t2ms_, _t2mcs_,
+            _t2zs_, summaryPanel, detailsPanel
+        ) {
 
             var params = _$loc_.search(),
-                projection,
                 dim,
                 wh,
                 uplink = {
@@ -109,38 +105,39 @@
                     // showNoDevs: showNoDevs,
                     // projection: function () { return projection; },
                     zoomLayer: function () { return zoomLayer; },
-                    zoomer: function () { return zoomer; },
+                    zoomer: function () { return zoomer; }
                     // opacifyMap: opacifyMap,
                     // topoStartDone: topoStartDone
                 };
 
             $scope = _$scope_;
             $log = _$log_;
-            $loc = _$loc_;
 
             fs = _fs_;
             mast = _mast_;
             ks = _ks_;
-            zs = _zs_;
 
             gs = _gs_;
-            ms = _ms_;
             sus = _sus_;
-            flash = _flash_;
 
-            wss = _wss_;
             ps = _ps_;
-            th = _th_;
 
             t2es = _t2es_;
             t2fs = _t2fs_;
             t2is = _t2is_;
             t2bcs = _t2bcs_;
+            t2kcs = _t2kcs_;
+            t2ms = _t2ms_;
+            t2mcs = _t2mcs_;
+            t2zs = _t2zs_;
 
             // capture selected intent parameters (if they are set in the
             //  query string) so that the traffic overlay can highlight
             //  the path for that intent
-            if (params.intentKey && params.intentAppId && params.intentAppName) {
+            if (params.intentKey &&
+                params.intentAppId &&
+                params.intentAppName) {
+
                 $scope.intentData = {
                     key: params.intentKey,
                     appId: params.intentAppId,
@@ -158,6 +155,9 @@
                 t2es.stop();
                 ks.unbindKeys();
                 t2fs.destroy();
+                t2is.destroy();
+                summaryPanel.destroy();
+                detailsPanel.destroy();
             });
 
             // svg layer and initialization of components
@@ -169,7 +169,6 @@
             svg.attr(wh);
             dim = [wh.width, wh.height];
 
-
             // set up our keyboard shortcut bindings
             setUpKeys();
             setUpZoom();
@@ -178,55 +177,35 @@
             // make sure we can respond to topology events from the server
             t2es.bindHandlers();
 
+            // Add the map SVG Group
+            t2ms.init(zoomLayer, zoomer).then(
+                function (proj) {
+                    var z = ps.getPrefs('topo_zoom', { tx: 0, ty: 0, sc: 1 });
+                    zoomer.panZoom([z.tx, z.ty], z.sc);
+
+                    t2mcs.projection(proj);
+                    $log.debug('** Zoom restored:', z);
+                    $log.debug('** We installed the projection:', proj);
+
+                    // Now the map has load and we have a projection we can
+                    // get the info from the server
+                    t2es.start();
+                }
+            );
+
             // initialize the force layout, ready to render the topology
             forceG = zoomLayer.append('g').attr('id', 'topo-force');
+
             t2fs.init(svg, forceG, uplink, dim);
             t2bcs.init();
-
-
-            // =-=-=-=-=-=-=-=-
-            // TODO: in future, we will load background map data
-            //  asynchronously (hence the promise) and then chain off
-            //  there to send the topo2start event to the server.
-            // For now, we'll send the event inline...
-            t2es.start();
-
-
-
+            t2kcs.init(t2fs);
             t2is.initInst({ showMastership: t2fs.showMastership });
-
-
 
             // === ORIGINAL CODE ===
 
-            // setUpKeys();
             // setUpToolbar();
-            // setUpDefs();
-            // setUpZoom();
             // setUpNoDevs();
-            /*
-            setUpMap().then(
-                function (proj) {
-                    var z = ps.getPrefs('topo_zoom', { tx:0, ty:0, sc:1 });
-                    zoomer.panZoom([z.tx, z.ty], z.sc);
-                    $log.debug('** Zoom restored:', z);
 
-                    projection = proj;
-                    $log.debug('** We installed the projection:', proj);
-                    flash.enable(false);
-                    toggleMap(prefsState.bg);
-                    flash.enable(true);
-                    mapShader(true);
-
-                    // now we have the map projection, we are ready for
-                    //  the server to send us device/host data...
-                    tes.start();
-                    // need to do the following so we immediately get
-                    //  the summary panel data back from the server
-                    restoreSummaryFromPrefs();
-                }
-            );
-            */
             // tes.bindHandlers();
             // setUpSprites();
 
@@ -240,6 +219,9 @@
 
             // $log.debug('registered overlays...', tov.list());
 
+            summaryPanel.init();
+            detailsPanel.init();
+
             $log.log('OvTopo2Ctrl has been created');
         }]);
-}());
+})();

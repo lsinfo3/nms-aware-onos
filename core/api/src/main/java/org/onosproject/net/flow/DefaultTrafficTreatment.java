@@ -401,6 +401,11 @@ public final class DefaultTrafficTreatment implements TrafficTreatment {
         }
 
         @Override
+        public Builder pushVlan(EthType ethType) {
+            return add(Instructions.pushVlan(ethType));
+        }
+
+        @Override
         public Builder transition(Integer tableId) {
             return add(Instructions.transition(tableId));
         }
@@ -472,6 +477,23 @@ public final class DefaultTrafficTreatment implements TrafficTreatment {
         public TrafficTreatment.Builder extension(ExtensionTreatment extension,
                                                   DeviceId deviceId) {
             return add(Instructions.extension(extension, deviceId));
+        }
+
+        @Override
+        public TrafficTreatment.Builder addTreatment(TrafficTreatment treatment) {
+            List<Instruction> previous = current;
+            deferred();
+            treatment.deferred().forEach(i -> add(i));
+
+            immediate();
+            treatment.immediate().stream()
+                    // NOACTION will get re-added if there are no other actions
+                    .filter(i -> i.type() != Instruction.Type.NOACTION)
+                    .forEach(i -> add(i));
+
+            clear = treatment.clearedDeferred();
+            current = previous;
+            return this;
         }
 
         @Override

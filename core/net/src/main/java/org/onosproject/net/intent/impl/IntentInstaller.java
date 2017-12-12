@@ -53,7 +53,7 @@ import static org.slf4j.LoggerFactory.getLogger;
  */
 class IntentInstaller {
 
-    private static final Logger log = getLogger(IntentManager.class);
+    private static final Logger log = getLogger(IntentInstaller.class);
 
     private IntentStore store;
     private ObjectiveTrackerService trackerService;
@@ -187,13 +187,41 @@ class IntentInstaller {
     private abstract class OperationContext {
         protected Optional<IntentData> toUninstall;
         protected Optional<IntentData> toInstall;
+        /**
+         * Implementation of {@link OperationContext} should call this on success.
+         */
         protected Consumer<OperationContext> successConsumer;
+        /**
+         * Implementation of {@link OperationContext} should call this on error.
+         */
         protected Consumer<OperationContext> errorConsumer;
 
+        /**
+         * Applies the Intents specified by
+         * {@link #prepareIntents(List, Direction)} call(s) prior to this call.
+         */
         abstract void apply();
 
+        /**
+         * Returns error state of the context.
+         * <p>
+         * Used for error logging purpose.
+         * Returned Object should have reasonable toString() implementation.
+         * @return context state, describing current error state
+         */
         abstract Object error();
 
+        /**
+         * Prepares Intent(s) to {@link #apply() apply} in this operation.
+         * <p>
+         * Intents specified by {@code intentsToApply} in a single call
+         * can be applied to the Devices in arbitrary order.
+         * But group of Intents specified in consecutive {@link #prepareIntents(List, Direction)}
+         * calls must be applied in order. (e.g., guarded by barrier)
+         *
+         * @param intentsToApply {@link Intent}s to apply
+         * @param direction of operation
+         */
         abstract void prepareIntents(List<Intent> intentsToApply, Direction direction);
 
         void prepare(Optional<IntentData> toUninstall, Optional<IntentData> toInstall,
@@ -236,8 +264,8 @@ class IntentInstaller {
                         } else if (uIntent instanceof FlowRuleIntent && installIntent instanceof FlowRuleIntent) {
                             //FIXME we can further optimize this by doing the filtering on a flow-by-flow basis
                             //      (direction can be implied from intent state)
-                            return ((FlowRuleIntent) uIntent).flowRules()
-                                    .containsAll(((FlowRuleIntent) installIntent).flowRules());
+                            return !flowRuleIntentChanged(((FlowRuleIntent) uIntent),
+                                                          ((FlowRuleIntent) installIntent));
                         } else {
                             return false;
                         }
@@ -266,6 +294,30 @@ class IntentInstaller {
                 prepareIntents(uninstallIntents, Direction.REMOVE);
                 prepareIntents(installIntents, Direction.ADD);
             }
+        }
+
+        /**
+         * Determines whether there is any flow rule changed
+         * (i.e., different set of flow rules or different treatments)
+         * between FlowRuleIntents to be uninstalled and to be installed.
+         *
+         * @param uninstallIntent FlowRuleIntent to uninstall
+         * @param installIntent FlowRuleIntent to install
+         * @return true if flow rules which to be uninstalled
+         * contains all flow rules which to be installed.
+         */
+        private boolean flowRuleIntentChanged(FlowRuleIntent uninstallIntent,
+                                              FlowRuleIntent installIntent) {
+            Collection<FlowRule> flowRulesToUninstall = uninstallIntent.flowRules();
+            Collection<FlowRule> flowRulesToInstall = installIntent.flowRules();
+
+            // Check if any flow rule changed
+            for (FlowRule flowRuleToInstall : flowRulesToInstall) {
+                if (flowRulesToUninstall.stream().noneMatch(flowRuleToInstall::exactMatch)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /**
@@ -311,6 +363,7 @@ class IntentInstaller {
         FlowRuleOperations.Builder builder = FlowRuleOperations.builder();
         FlowRuleOperationsContext flowRuleOperationsContext;
 
+        @Override
         void apply() {
             flowRuleOperationsContext = new FlowRuleOperationsContext() {
                 @Override
@@ -404,11 +457,11 @@ class IntentInstaller {
 
         @Override
         void apply() {
-            contexts.forEach(objectiveContext -> {
-                pendingContexts.add(objectiveContext);
+            pendingContexts.addAll(contexts);
+            contexts.forEach(objectiveContext ->
                 flowObjectiveService.apply(objectiveContext.deviceId,
-                                           objectiveContext.objective);
-            });
+                                           objectiveContext.objective)
+            );
         }
 
         @Override

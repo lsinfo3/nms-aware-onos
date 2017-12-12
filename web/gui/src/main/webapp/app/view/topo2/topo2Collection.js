@@ -22,16 +22,19 @@
 (function () {
     'use strict';
 
-    var Model;
+    var Model,
+        extend;
 
     function Collection(models, options) {
 
-        options || (options = {});
+        var opts = options || (options = {});
 
         this.models = [];
         this._reset();
 
-        if (options.comparator !== void 0) this.comparator = options.comparator;
+        if (opts.comparator) {
+            this.comparator = opts.comparator;
+        }
 
         if (models) {
             this.add(models);
@@ -48,7 +51,8 @@
 
                 data.forEach(function (d) {
 
-                    var model = new _this.model(d);
+                    var CollectionModel = _this.model;
+                    var model = new CollectionModel(d);
                     model.collection = _this;
 
                     _this.models.push(model);
@@ -57,9 +61,11 @@
             }
         },
         get: function (id) {
+
             if (!id) {
-                return void 0;
+                return null;
             }
+
             return this._byId[id] || null;
         },
         sort: function () {
@@ -72,43 +78,26 @@
 
             return this;
         },
+        filter: function (comparator) {
+            return _.filter(this.models, comparator);
+        },
         _reset: function () {
             this._byId = [];
             this.models = [];
         },
-        toJSON: function(options) {
-            return this.models.map(function(model) { return model.toJSON(options); });
-        },
-    };
-
-    Collection.extend = function (protoProps, staticProps) {
-
-        var parent = this;
-        var child;
-
-        child = function () {
-            return parent.apply(this, arguments);
-        };
-
-        angular.extend(child, parent, staticProps);
-
-        // Set the prototype chain to inherit from `parent`, without calling
-        // `parent`'s constructor function and add the prototype properties.
-        child.prototype = angular.extend({}, parent.prototype, protoProps);
-        child.prototype.constructor = child;
-
-        // Set a convenience property in case the parent's prototype is needed
-        // later.
-        child.__super__ = parent.prototype;
-
-        return child;
+        toJSON: function (options) {
+            return this.models.map(function (model) {
+                return model.toJSON(options);
+            });
+        }
     };
 
     angular.module('ovTopo2')
         .factory('Topo2Collection',
-        ['Topo2Model',
-            function (_Model_) {
+        ['Topo2Model', 'FnService',
+            function (_Model_, fn) {
 
+                Collection.extend = fn.extend;
                 Model = _Model_;
                 return Collection;
             }

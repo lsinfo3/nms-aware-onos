@@ -16,28 +16,34 @@
 
 package org.onosproject.ui;
 
+import static com.google.common.base.Preconditions.checkState;
+
 /**
- * Represents user interface topology view overlay.
+ * Represents a geographically-based map to be used in the user interface
+ * topology view. Instances of this class are immutable.
  */
 public class UiTopoMap {
 
     private final String id;
-    private final String description;
+    private final String desc;
     private final String filePath;
     private final double scale;
+    private static final int MAX_LENGTH = 32;
+    private static final String DES_EXC_LIM = "Description is too long";
 
 
     /**
      * Creates a new topology map.
      *
      * @param id map identifier
-     * @param description map description
-     * @param filePath map filePath,
-     * @param scale map scale,
+     * @param desc map description
+     * @param filePath map filePath
+     * @param scale map scale
      */
-    public UiTopoMap(String id, String description, String filePath, double scale) {
+    public UiTopoMap(String id, String desc, String filePath, double scale) {
+        checkState(desc.length() <= MAX_LENGTH, DES_EXC_LIM);
         this.id = id;
-        this.description = description;
+        this.desc = desc;
         this.filePath = filePath;
         this.scale = scale;
     }
@@ -47,8 +53,8 @@ public class UiTopoMap {
      *
      * @return the identifier
      */
-    public String getId() {
-        return this.id;
+    public String id() {
+        return id;
     }
 
     /**
@@ -56,8 +62,8 @@ public class UiTopoMap {
      *
      * @return the description
      */
-    public String getDescription() {
-        return this.description;
+    public String description() {
+        return desc;
     }
 
     /**
@@ -65,8 +71,8 @@ public class UiTopoMap {
      *
      * @return the filePath
      */
-    public String getFilePath() {
-        return this.filePath;
+    public String filePath() {
+        return filePath;
     }
 
     /**
@@ -74,8 +80,7 @@ public class UiTopoMap {
      *
      * @return the scale
      */
-    public double getScale() {
-        return this.scale;
+    public double scale() {
+        return scale;
     }
-
 }

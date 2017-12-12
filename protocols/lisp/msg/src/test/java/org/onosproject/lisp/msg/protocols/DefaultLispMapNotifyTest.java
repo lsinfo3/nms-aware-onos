@@ -43,37 +43,38 @@ public final class DefaultLispMapNotifyTest {
     private LispMapNotify notify1;
     private LispMapNotify sameAsNotify1;
     private LispMapNotify notify2;
+    private static final String AUTH_KEY = "onos";
 
     @Before
     public void setup() {
 
-        NotifyBuilder builder1 =
-                        new DefaultNotifyBuilder();
+        NotifyBuilder builder1 = new DefaultNotifyBuilder();
 
         List<LispMapRecord> records1 = ImmutableList.of(getMapRecord(), getMapRecord());
 
         notify1 = builder1
                         .withKeyId((short) 1)
+                        .withAuthKey(AUTH_KEY)
                         .withNonce(1L)
                         .withMapRecords(records1)
                         .build();
 
-        NotifyBuilder builder2 =
-                        new DefaultNotifyBuilder();
+        NotifyBuilder builder2 = new DefaultNotifyBuilder();
 
         List<LispMapRecord> records2 = ImmutableList.of(getMapRecord(), getMapRecord());
 
         sameAsNotify1 = builder2
                         .withKeyId((short) 1)
+                        .withAuthKey(AUTH_KEY)
                         .withNonce(1L)
                         .withMapRecords(records2)
                         .build();
 
-        NotifyBuilder builder3 =
-                        new DefaultNotifyBuilder();
+        NotifyBuilder builder3 = new DefaultNotifyBuilder();
 
         notify2 = builder3
                         .withKeyId((short) 2)
+                        .withAuthKey(AUTH_KEY)
                         .withNonce(2L)
                         .build();
     }

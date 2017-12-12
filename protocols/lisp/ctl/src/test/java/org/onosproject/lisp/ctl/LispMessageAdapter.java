@@ -19,6 +19,8 @@ import io.netty.buffer.ByteBuf;
 import org.onosproject.lisp.msg.protocols.LispMessage;
 import org.onosproject.lisp.msg.protocols.LispType;
 
+import java.net.InetSocketAddress;
+
 /**
  * Adapter for testing against a LISP message.
  */
@@ -34,6 +36,16 @@ public class LispMessageAdapter implements LispMessage {
     @Override
     public LispType getType() {
         return type;
+    }
+
+    @Override
+    public void configSender(InetSocketAddress sender) {
+
+    }
+
+    @Override
+    public InetSocketAddress getSender() {
+        return new InetSocketAddress(1);
     }
 
     @Override

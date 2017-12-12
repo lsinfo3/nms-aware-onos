@@ -227,10 +227,10 @@
          tss.deselectAll();
 
          if (ldata) {
-            if (!ldata.el.classed('selected')) {
-                selLink(ldata);
-            } else {
+            if (ldata.el.classed('selected')) {
                 unselLink(ldata);
+            } else {
+                selLink(ldata);
             }
          }
     }

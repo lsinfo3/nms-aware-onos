@@ -215,7 +215,7 @@ public class SingleSwitchFibInstaller {
 
         //clean up the routes.
         for (Map.Entry<IpPrefix, IpAddress> routes: prefixToNextHop.entrySet()) {
-            deleteRoute(new ResolvedRoute(routes.getKey(), null, null));
+            deleteRoute(new ResolvedRoute(routes.getKey(), null, null, null));
         }
 
         //clean up the filtering objective for interfaces.
@@ -282,7 +282,7 @@ public class SingleSwitchFibInstaller {
 
     private Set<Interface> getInterfaces() {
         Set<Interface> intfs;
-        if (interfaces.isEmpty()) {
+        if (interfaces == null || interfaces.isEmpty()) {
             intfs = interfaceService.getInterfaces();
         } else {
             // TODO need to fix by making interface names globally unique

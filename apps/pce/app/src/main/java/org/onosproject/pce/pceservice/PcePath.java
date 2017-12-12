@@ -21,6 +21,7 @@ import org.onosproject.incubator.net.tunnel.TunnelId;
 import org.onosproject.net.intent.Constraint;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Abstraction of an entity which provides functionalities of pce path.
@@ -177,9 +178,10 @@ public interface PcePath {
          * Copies tunnel information to local.
          *
          * @param tunnel pcc tunnel
+         * @param explicitPathInfoList list of explicit path objects info
          * @return object of pce-path
          */
-        Builder of(Tunnel tunnel);
+        Builder of(Tunnel tunnel, List<ExplicitPathInfo> explicitPathInfoList);
 
         /**
          * Returns the builder object of ExplicitPathInfo.

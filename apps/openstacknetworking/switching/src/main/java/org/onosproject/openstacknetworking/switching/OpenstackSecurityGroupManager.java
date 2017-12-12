@@ -332,6 +332,59 @@ public class OpenstackSecurityGroupManager extends AbstractVmHandler
         log.info("Applied security group rules for {}", host);
     }
 
+    @Override
+    public void reinstallVmFlow(Host host) {
+        if (host == null) {
+            hostService.getHosts().forEach(h -> {
+                updateSecurityGroupRules(h, true);
+                log.info("Re-Install data plane flow of virtual machine {}", h);
+            });
+        } else {
+            securityGroupRuleMap.entrySet().stream()
+                .filter(entry -> entry.getKey().id().equals(host.id()))
+                .forEach(entry -> {
+                    Host local = entry.getKey();
+                    entry.getValue().forEach(sgRule -> {
+                        setSecurityGroupRule(local.location().deviceId(),
+                                sgRule.rule(),
+                                getIp(local),
+                                sgRule.remoteIp(), true);
+                    });
+                });
+            log.info("Re-Install data plane flow of virtual machine {}", host);
+        }
+    }
+
+    @Override
+    public void purgeVmFlow(Host host) {
+        if (host == null) {
+            securityGroupRuleMap.entrySet().stream()
+                .forEach(entry -> {
+                    Host local = entry.getKey();
+                    entry.getValue().forEach(sgRule -> {
+                        setSecurityGroupRule(local.location().deviceId(),
+                                sgRule.rule(),
+                                getIp(local),
+                                sgRule.remoteIp(), false);
+                    });
+                    log.info("Purge data plane flow of virtual machine {}", local);
+                });
+        } else {
+            securityGroupRuleMap.entrySet().stream()
+                .filter(entry -> entry.getKey().id().equals(host.id()))
+                .forEach(entry -> {
+                    Host local = entry.getKey();
+                    entry.getValue().forEach(sgRule -> {
+                        setSecurityGroupRule(local.location().deviceId(),
+                                sgRule.rule(),
+                                getIp(local),
+                                sgRule.remoteIp(), false);
+                    });
+                });
+            log.info("Purge data plane flow of virtual machine {}", host);
+        }
+    }
+
     private final class SecurityGroupRule {
         private final OpenstackSecurityGroupRule rule;
         private final IpPrefix remoteIp;

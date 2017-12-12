@@ -37,6 +37,7 @@ import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.Timer;
 
@@ -161,7 +162,7 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
     label = "Frequency (in seconds) for polling switch Port statistics")
     private int portStatsPollFrequency = POLL_INTERVAL;
 
-    private final Timer timer = new Timer("onos-openflow-collector");
+    private final Timer timer = new Timer("onos-openflow-portstats-collector");
 
     private HashMap<Dpid, PortStatsCollector> collectors = Maps.newHashMap();
 
@@ -178,6 +179,8 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
         providerService = providerRegistry.register(this);
         controller.addListener(listener);
         controller.addEventListener(listener);
+
+        modified(context);
 
         connectInitialDevices();
         LOG.info("Started");
@@ -197,7 +200,7 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
 
     @Modified
     public void modified(ComponentContext context) {
-        Dictionary<?, ?> properties = context.getProperties();
+        Dictionary<?, ?> properties = context != null ? context.getProperties() : new Properties();
         int newPortStatsPollFrequency;
         try {
             String s = get(properties, POLL_PROP_NAME);

@@ -29,7 +29,6 @@ import static org.easymock.EasyMock.createMock;
 
 import com.google.common.testing.EqualsTester;
 
-
 import org.onlab.osgi.ServiceDirectory;
 import org.onlab.osgi.TestServiceDirectory;
 import org.onlab.rest.BaseResource;

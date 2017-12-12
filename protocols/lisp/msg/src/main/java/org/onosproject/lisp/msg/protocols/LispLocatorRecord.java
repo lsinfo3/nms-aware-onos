@@ -16,6 +16,7 @@
 package org.onosproject.lisp.msg.protocols;
 
 import io.netty.buffer.ByteBuf;
+import org.onosproject.lisp.msg.exceptions.LispWriterException;
 import org.onosproject.lisp.msg.types.LispAfiAddress;
 
 /**
@@ -83,8 +84,9 @@ public interface LispLocatorRecord {
      * Writes LISP message object into communication channel.
      *
      * @param byteBuf byte buffer
+     * @throws LispWriterException on error
      */
-    void writeTo(ByteBuf byteBuf);
+    void writeTo(ByteBuf byteBuf) throws LispWriterException;
 
     /**
      * A builder of LISP locator record.

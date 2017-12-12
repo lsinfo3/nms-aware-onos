@@ -16,137 +16,60 @@
 package org.onosproject.net.intent.impl.compiler;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
+import org.hamcrest.core.Is;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.onlab.packet.MacAddress;
 import org.onlab.packet.VlanId;
-import org.onosproject.TestApplicationId;
 import org.onosproject.cfg.ComponentConfigAdapter;
-import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
-import org.onosproject.core.IdGenerator;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.DefaultLink;
+import org.onosproject.net.FilteredConnectPoint;
 import org.onosproject.net.Link;
+import org.onosproject.net.PortNumber;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.DefaultTrafficTreatment;
 import org.onosproject.net.flow.FlowRule;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
-import org.onosproject.net.flow.criteria.Criteria;
-import org.onosproject.net.flow.criteria.Criterion;
+import org.onosproject.net.flow.criteria.MplsCriterion;
+import org.onosproject.net.flow.criteria.PortCriterion;
+import org.onosproject.net.flow.criteria.VlanIdCriterion;
 import org.onosproject.net.intent.FlowRuleIntent;
 import org.onosproject.net.intent.Intent;
 import org.onosproject.net.intent.IntentExtensionService;
 import org.onosproject.net.intent.LinkCollectionIntent;
-import org.onosproject.net.intent.MockIdGenerator;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.easymock.EasyMock.createMock;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.onlab.packet.EthType.EtherType.IPV4;
 import static org.onosproject.net.Link.Type.DIRECT;
-import static org.onosproject.net.NetTestTools.APP_ID;
-import static org.onosproject.net.NetTestTools.PID;
-import static org.onosproject.net.NetTestTools.connectPoint;
+import static org.onosproject.net.NetTestTools.*;
+import static org.onosproject.net.flow.criteria.Criterion.Type.IN_PORT;
+import static org.onosproject.net.flow.criteria.Criterion.Type.MPLS_LABEL;
+import static org.onosproject.net.flow.criteria.Criterion.Type.VLAN_VID;
+import static org.onosproject.net.flow.instructions.L2ModificationInstruction.*;
 
-public class LinkCollectionIntentCompilerTest {
-
-    private final ApplicationId appId = new TestApplicationId("test");
-
-    private final ConnectPoint d1p1 = connectPoint("s1", 1);
-    private final ConnectPoint d2p0 = connectPoint("s2", 0);
-    private final ConnectPoint d2p1 = connectPoint("s2", 1);
-    private final ConnectPoint d2p2 = connectPoint("s2", 2);
-    private final ConnectPoint d2p3 = connectPoint("s2", 3);
-    private final ConnectPoint d3p1 = connectPoint("s3", 1);
-    private final ConnectPoint d3p2 = connectPoint("s3", 9);
-    private final ConnectPoint d3p0 = connectPoint("s3", 10);
-    private final ConnectPoint d1p0 = connectPoint("s1", 10);
-    private final ConnectPoint d4p1 = connectPoint("s4", 1);
-    private final ConnectPoint d4p0 = connectPoint("s4", 10);
-
-
-    private final Set<Link> links = ImmutableSet.of(
-            DefaultLink.builder().providerId(PID).src(d1p1).dst(d2p0).type(DIRECT).build(),
-            DefaultLink.builder().providerId(PID).src(d2p1).dst(d3p1).type(DIRECT).build(),
-            DefaultLink.builder().providerId(PID).src(d1p1).dst(d3p1).type(DIRECT).build());
-
-    private final Set<Link> linksMultiple = ImmutableSet.of(
-            DefaultLink.builder().providerId(PID).src(d3p1).dst(d2p0).type(DIRECT).build());
-
-    private final Set<Link> linksMultiple2 = ImmutableSet.of(
-            DefaultLink.builder().providerId(PID).src(d2p0).dst(d1p1).type(DIRECT).build(),
-            DefaultLink.builder().providerId(PID).src(d2p1).dst(d3p1).type(DIRECT).build(),
-            DefaultLink.builder().providerId(PID).src(d2p2).dst(d4p1).type(DIRECT).build());
-
-    private final TrafficSelector selector = DefaultTrafficSelector.builder().build();
-    private final TrafficTreatment treatment = DefaultTrafficTreatment.builder().build();
-
-    private final VlanId ingressVlan1 = VlanId.vlanId("10");
-    private final TrafficSelector selectorVlan1 = DefaultTrafficSelector
-            .builder()
-            .matchVlanId(ingressVlan1)
-            .build();
-
-    private final VlanId ingressVlan2 = VlanId.vlanId("20");
-    private final TrafficSelector selectorVlan2 = DefaultTrafficSelector
-            .builder()
-            .matchVlanId(ingressVlan2)
-            .build();
-
-    private final VlanId egressVlan = VlanId.vlanId("666");
-    private final TrafficTreatment vlanTreatment = DefaultTrafficTreatment
-            .builder()
-            .setVlanId(egressVlan)
-            .build();
-
-private final VlanId ingressVlan = VlanId.vlanId("10");
-    private final TrafficSelector vlanSelector = DefaultTrafficSelector
-            .builder()
-            .matchVlanId(ingressVlan)
-            .build();
-
-    private final VlanId egressVlan1 = VlanId.vlanId("20");
-    private final TrafficTreatment vlanTreatment1 = DefaultTrafficTreatment
-            .builder()
-            .setVlanId(egressVlan1)
-            .build();
-
-    private final VlanId egressVlan2 = VlanId.vlanId("666");
-    private final TrafficTreatment vlanTreatment2 = DefaultTrafficTreatment
-            .builder()
-            .setVlanId(egressVlan2)
-            .build();
-
-    private final VlanId egressVlan3 = VlanId.vlanId("69");
-    private final TrafficTreatment vlanTreatment3 = DefaultTrafficTreatment
-            .builder()
-            .setVlanId(egressVlan3)
-            .build();
-
-
-    private CoreService coreService;
-    private IntentExtensionService intentExtensionService;
-    private IntentConfigurableRegistrator registrator;
-    private IdGenerator idGenerator = new MockIdGenerator();
-
-    private LinkCollectionIntent intent;
-    private LinkCollectionIntent intentMultipleSelectors;
-    private LinkCollectionIntent intentMultipleTreatments;
-    private LinkCollectionIntent intentMultipleTreatments2;
-
-    private LinkCollectionIntentCompiler sut;
+/**
+ * This set of tests are meant to test the LinkCollectionIntent
+ * compiler.
+ */
+public class LinkCollectionIntentCompilerTest extends AbstractLinkCollectionTest {
 
     @Before
     public void setUp() {
@@ -166,32 +89,6 @@ private final VlanId ingressVlan = VlanId.vlanId("10");
                 .ingressPoints(ImmutableSet.of(d1p1))
                 .egressPoints(ImmutableSet.of(d3p1))
                 .build();
-        intentMultipleSelectors = LinkCollectionIntent.builder()
-                .appId(APP_ID)
-                .treatment(vlanTreatment)
-                .links(linksMultiple)
-                .ingressPoints(ImmutableSet.of(d3p0, d3p2))
-                .egressPoints(ImmutableSet.of(d2p1))
-                .ingressSelectors(this.createIngressSelectors())
-                .build();
-        intentMultipleTreatments = LinkCollectionIntent.builder()
-                .appId(APP_ID)
-                .selector(vlanSelector)
-                .links(linksMultiple)
-                .ingressPoints(ImmutableSet.of(d3p0))
-                .egressPoints(ImmutableSet.of(d2p1, d2p2))
-                .egressTreatments(this.createEgressTreatments())
-                .applyTreatmentOnEgress(true)
-                .build();
-        intentMultipleTreatments2 = LinkCollectionIntent.builder()
-                .appId(APP_ID)
-                .selector(vlanSelector)
-                .links(linksMultiple2)
-                .ingressPoints(ImmutableSet.of(d2p3))
-                .egressPoints(ImmutableSet.of(d1p0, d3p0, d4p0))
-                .egressTreatments(this.createEgressTreatments2())
-                .applyTreatmentOnEgress(true)
-                .build();
 
         intentExtensionService = createMock(IntentExtensionService.class);
         intentExtensionService.registerCompiler(LinkCollectionIntent.class, sut);
@@ -204,14 +101,23 @@ private final VlanId ingressVlan = VlanId.vlanId("10");
 
         sut.registrator = registrator;
 
+        LinkCollectionCompiler.optimizeInstructions = false;
+        LinkCollectionCompiler.copyTtl = false;
+
         replay(coreService, intentExtensionService);
+
     }
 
     @After
     public void tearDown() {
+
         Intent.unbindIdGenerator(idGenerator);
     }
 
+    /**
+     * We test the proper compilation of a simple link collection intent
+     * with connect points, trivial treatment and trivial selector.
+     */
     @Test
     public void testCompile() {
         sut.activate();
@@ -219,12 +125,17 @@ private final VlanId ingressVlan = VlanId.vlanId("10");
         List<Intent> compiled = sut.compile(intent, Collections.emptyList());
         assertThat(compiled, hasSize(1));
 
+        assertThat("key is inherited",
+                   compiled.stream().map(Intent::key).collect(Collectors.toList()),
+                   everyItem(is(intent.key())));
+
+
         Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
         assertThat(rules, hasSize(links.size()));
 
         // if not found, get() raises an exception
         FlowRule rule1 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
+                .filter(rule -> rule.deviceId().equals(d1p10.deviceId()))
                 .findFirst()
                 .get();
         assertThat(rule1.selector(), is(
@@ -262,299 +173,941 @@ private final VlanId ingressVlan = VlanId.vlanId("10");
         sut.deactivate();
     }
 
-@Test
-    public void testCompileMultipleSelectors() {
+    /**
+     * Single point to multi point case. Scenario is the follow:
+     *
+     * -1 of1 2-1 of2 2--1 of3 2-
+     *             3
+     *             `-1 of4 2-
+     *
+     * We test the proper compilation of sp2mp with trivial selector,
+     * trivial treatment and different filtered points
+     */
+    @Test
+    public void testFilteredConnectPointForSp() {
         sut.activate();
+        Set<Link> testLinks = ImmutableSet.of(
+                DefaultLink.builder().providerId(PID).src(of1p2).dst(of2p1).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of2p2).dst(of3p1).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of2p3).dst(of4p1).type(DIRECT).build()
+        );
 
-        List<Intent> compiled = sut.compile(intentMultipleSelectors, Collections.emptyList());
-        assertThat(compiled, hasSize(1));
+        TrafficSelector expectOf1Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf1Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf2Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf2Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .setOutput(PortNumber.portNumber(3))
+                .build();
+
+        TrafficSelector expectOf3Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf3Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf4Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf4Treatment = DefaultTrafficTreatment.builder()
+                .setVlanId(VlanId.vlanId("200"))
+                .setOutput(PortNumber.portNumber(2))
+                .build();
 
 
-        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
-        assertThat(rules, hasSize((linksMultiple.size()) + intentMultipleSelectors.ingressPoints().size()));
 
-        Set<FlowRule> d3Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId()))
-                .collect(Collectors.toSet());
-        assertThat(d3Rules, hasSize(intentMultipleSelectors.ingressPoints().size()));
+        Set<FilteredConnectPoint> ingress = ImmutableSet.of(
+                new FilteredConnectPoint(of1p1, vlan100Selector)
+        );
 
-        FlowRule rule1 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId())
-                        &&
-                        rule.selector().getCriterion(Criterion.Type.IN_PORT).equals(Criteria.matchInPort(d3p0.port())))
-                .findFirst()
-                .get();
-        assertThat(rule1.selector(), is(
-                DefaultTrafficSelector
-                        .builder(intentMultipleSelectors.selector())
-                        .matchInPort(d3p0.port())
-                        .matchVlanId(ingressVlan1)
-                        .build()
-        ));
-        assertThat(rule1.treatment(), is(
-                DefaultTrafficTreatment
-                        .builder(intentMultipleSelectors.treatment())
-                        .setOutput(d3p1.port())
-                        .build()
-        ));
-        assertThat(rule1.priority(), is(intentMultipleSelectors.priority()));
+        Set<FilteredConnectPoint> egress = ImmutableSet.of(
+                new FilteredConnectPoint(of3p2, vlan100Selector),
+                new FilteredConnectPoint(of4p2, vlan200Selector)
+        );
 
-        FlowRule rule2 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId())
-                        &&
-                        rule.selector().getCriterion(Criterion.Type.IN_PORT).equals(Criteria.matchInPort(d3p2.port())))
-                .findFirst()
-                .get();
-        assertThat(rule2.selector(), is(
-                DefaultTrafficSelector
-                        .builder(intentMultipleSelectors.selector())
-                        .matchInPort(d3p2.port())
-                        .matchVlanId(ingressVlan2)
-                        .build()
-        ));
-        assertThat(rule2.treatment(), is(
-                DefaultTrafficTreatment
-                        .builder(intentMultipleSelectors.treatment())
-                        .setOutput(d3p1.port())
-                        .build()
-        ));
-        assertThat(rule2.priority(), is(intentMultipleSelectors.priority()));
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .filteredIngressPoints(ingress)
+                .filteredEgressPoints(egress)
+                .treatment(treatment)
+                .applyTreatmentOnEgress(true)
+                .links(testLinks)
+                .build();
 
-        Set<FlowRule> d2Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d2p0.deviceId()))
-                .collect(Collectors.toSet());
-        assertThat(d2Rules, hasSize(intentMultipleSelectors.egressPoints().size()));
+        assertThat(sut, is(notNullValue()));
 
-        // We do not need in_port filter
-        FlowRule rule3 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d2p0.deviceId()))
-                .findFirst()
-                .get();
-        assertThat(rule3.selector(), is(
-                DefaultTrafficSelector
-                        .builder(intentMultipleSelectors.selector())
-                        .matchInPort(d2p0.port())
-                        .matchVlanId(egressVlan)
-                        .build()
-        ));
-        assertThat(rule3.treatment(), is(
-                DefaultTrafficTreatment
-                        .builder()
-                        .setOutput(d2p1.port())
-                        .build()
-        ));
-        assertThat(rule3.priority(), is(intentMultipleSelectors.priority()));
+        List<Intent> result = sut.compile(intent, Collections.emptyList());
+
+        assertThat(result, is(notNullValue()));
+        assertThat(result, hasSize(1));
+
+        Intent resultIntent = result.get(0);
+        assertThat(resultIntent, instanceOf(FlowRuleIntent.class));
+
+        if (resultIntent instanceof FlowRuleIntent) {
+            FlowRuleIntent frIntent = (FlowRuleIntent) resultIntent;
+
+            assertThat(frIntent.flowRules(), hasSize(4));
+
+            List<FlowRule> deviceFlowRules;
+            FlowRule flowRule;
+
+            // Of1
+            deviceFlowRules = getFlowRulesByDevice(of1Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf1Selector));
+            assertThat(flowRule.treatment(), is(expectOf1Treatment));
+
+            // Of2
+            deviceFlowRules = getFlowRulesByDevice(of2Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf2Selector));
+            assertThat(flowRule.treatment(), is(expectOf2Treatment));
+
+            // Of3
+            deviceFlowRules = getFlowRulesByDevice(of3Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf3Selector));
+            assertThat(flowRule.treatment(), is(expectOf3Treatment));
+
+            // Of4
+            deviceFlowRules = getFlowRulesByDevice(of4Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf4Selector));
+            assertThat(flowRule.treatment(), is(expectOf4Treatment));
+
+        }
+        sut.deactivate();
+    }
+
+    /**
+     * Multi point to single point intent with filtered connect point.
+     * Scenario is the follow:
+     *
+     * -1 of1 2-1 of2 2-1 of4 2-
+     *             3
+     * -1 of3 2---/
+     *
+     * We test the proper compilation of mp2sp intents with trivial selector,
+     * trivial treatment and different filtered point.
+     */
+    @Test
+    public void testFilteredConnectPointForMp() {
+        sut.activate();
+        Set<Link> testlinks = ImmutableSet.of(
+                DefaultLink.builder().providerId(PID).src(of1p2).dst(of2p1).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of3p2).dst(of2p3).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of2p2).dst(of4p1).type(DIRECT).build()
+        );
+
+        Set<FilteredConnectPoint> ingress = ImmutableSet.of(
+                new FilteredConnectPoint(of1p1, vlan100Selector),
+                new FilteredConnectPoint(of3p1, vlan100Selector)
+        );
+
+        Set<FilteredConnectPoint> egress = ImmutableSet.of(
+                new FilteredConnectPoint(of4p2, vlan200Selector)
+        );
+
+        TrafficSelector expectOf1Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf1Treatment = DefaultTrafficTreatment.builder()
+                .setVlanId(VlanId.vlanId("200"))
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf2Selector1 = DefaultTrafficSelector.builder(vlan200Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficSelector expectOf2Selector2 = DefaultTrafficSelector.builder(vlan200Selector)
+                .matchInPort(PortNumber.portNumber(3))
+                .build();
+
+        TrafficTreatment expectOf2Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf3Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf3Treatment = DefaultTrafficTreatment.builder()
+                .setVlanId(VlanId.vlanId("200"))
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf4Selector = DefaultTrafficSelector.builder(vlan100Selector)
+                .matchInPort(PortNumber.portNumber(1))
+                .matchVlanId(VlanId.vlanId("200"))
+                .build();
+
+        TrafficTreatment expectOf4Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .filteredIngressPoints(ingress)
+                .filteredEgressPoints(egress)
+                .treatment(treatment)
+                .links(testlinks)
+                .build();
+
+        List<Intent> result = sut.compile(intent, Collections.emptyList());
+
+        assertThat(result, is(notNullValue()));
+        assertThat(result, hasSize(1));
+
+        Intent resultIntent = result.get(0);
+        assertThat(resultIntent, instanceOf(FlowRuleIntent.class));
+
+        if (resultIntent instanceof FlowRuleIntent) {
+            FlowRuleIntent frIntent = (FlowRuleIntent) resultIntent;
+            assertThat(frIntent.flowRules(), hasSize(5));
+
+            List<FlowRule> deviceFlowRules;
+            FlowRule flowRule;
+
+            // Of1
+            deviceFlowRules = getFlowRulesByDevice(of1Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf1Selector));
+            assertThat(flowRule.treatment(), is(expectOf1Treatment));
+
+            // Of2 (has 2 flows)
+            deviceFlowRules = getFlowRulesByDevice(of2Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(2));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf2Selector1));
+            assertThat(flowRule.treatment(), is(expectOf2Treatment));
+            flowRule = deviceFlowRules.get(1);
+            assertThat(flowRule.selector(), is(expectOf2Selector2));
+            assertThat(flowRule.treatment(), is(expectOf2Treatment));
+
+            // Of3
+            deviceFlowRules = getFlowRulesByDevice(of3Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf3Selector));
+            assertThat(flowRule.treatment(), is(expectOf3Treatment));
+
+            // Of4
+            deviceFlowRules = getFlowRulesByDevice(of4Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf4Selector));
+            assertThat(flowRule.treatment(), is(expectOf4Treatment));
+        }
 
         sut.deactivate();
     }
 
+    /**
+     * Single point to multi point without filtered connect point case.
+     * Scenario is the follow:
+     *
+     * -1 of1 2-1 of2 2--1 of3 2-
+     *             3
+     *             `-1 of4 2-
+     *
+     * We test the proper compilation of sp2mp with non trivial selector,
+     * non trivial treatment and simple connect points.
+     */
     @Test
-    public void testCompileMultipleTreatments() {
+    public void nonTrivialTranslationForSp() {
+        sut.activate();
+        Set<Link> testLinks = ImmutableSet.of(
+                DefaultLink.builder().providerId(PID).src(of1p2).dst(of2p1).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of2p2).dst(of3p1).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of2p3).dst(of4p1).type(DIRECT).build()
+        );
+
+        TrafficSelector expectOf1Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf1Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf2Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf2Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .setOutput(PortNumber.portNumber(3))
+                .build();
+
+        TrafficSelector expectOf3Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf3Treatment = DefaultTrafficTreatment.builder(ethDstTreatment)
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf4Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf4Treatment = DefaultTrafficTreatment.builder(ethDstTreatment)
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+
+
+        Set<ConnectPoint> ingress = ImmutableSet.of(
+                of1p1
+        );
+
+        Set<ConnectPoint> egress = ImmutableSet.of(
+                of3p2,
+                of4p2
+        );
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(ipPrefixSelector)
+                .treatment(ethDstTreatment)
+                .ingressPoints(ingress)
+                .egressPoints(egress)
+                .applyTreatmentOnEgress(true)
+                .links(testLinks)
+                .build();
+
+        assertThat(sut, is(notNullValue()));
+
+        List<Intent> result = sut.compile(intent, Collections.emptyList());
+
+        assertThat(result, is(notNullValue()));
+        assertThat(result, hasSize(1));
+
+        Intent resultIntent = result.get(0);
+        assertThat(resultIntent, instanceOf(FlowRuleIntent.class));
+
+        if (resultIntent instanceof FlowRuleIntent) {
+            FlowRuleIntent frIntent = (FlowRuleIntent) resultIntent;
+
+            assertThat(frIntent.flowRules(), hasSize(4));
+
+            List<FlowRule> deviceFlowRules;
+            FlowRule flowRule;
+
+            // Of1
+            deviceFlowRules = getFlowRulesByDevice(of1Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf1Selector));
+            assertThat(flowRule.treatment(), is(expectOf1Treatment));
+
+            // Of2
+            deviceFlowRules = getFlowRulesByDevice(of2Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf2Selector));
+            assertThat(flowRule.treatment(), is(expectOf2Treatment));
+
+            // Of3
+            deviceFlowRules = getFlowRulesByDevice(of3Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf3Selector));
+            assertThat(flowRule.treatment(), is(expectOf3Treatment));
+
+            // Of4
+            deviceFlowRules = getFlowRulesByDevice(of4Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf4Selector));
+            assertThat(flowRule.treatment(), is(expectOf4Treatment));
+
+        }
+        sut.deactivate();
+    }
+
+    /**
+     * Multi point to single point intent without filtered connect point.
+     * Scenario is the follow:
+     *
+     * -1 of1 2-1 of2 2-1 of4 2-
+     *             3
+     * -1 of3 2---/
+     *
+     * We test the proper compilation of mp2sp intent with non trivial selector,
+     * non trivial treatment and simple connect points.
+     */
+    @Test
+    public void nonTrivialTranslationForMp() {
+        sut.activate();
+        Set<Link> testlinks = ImmutableSet.of(
+                DefaultLink.builder().providerId(PID).src(of1p2).dst(of2p1).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of3p2).dst(of2p3).type(DIRECT).build(),
+                DefaultLink.builder().providerId(PID).src(of2p2).dst(of4p1).type(DIRECT).build()
+        );
+
+        Set<ConnectPoint> ingress = ImmutableSet.of(
+                of1p1,
+                of3p1
+        );
+
+        Set<ConnectPoint> egress = ImmutableSet.of(
+                of4p2
+        );
+
+        TrafficSelector expectOf1Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf1Treatment = DefaultTrafficTreatment.builder(ethDstTreatment)
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf2Selector1 = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .matchEthDst(MacAddress.valueOf("C0:FF:EE:C0:FF:EE"))
+                .build();
+
+        TrafficSelector expectOf2Selector2 = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchEthDst(MacAddress.valueOf("C0:FF:EE:C0:FF:EE"))
+                .matchInPort(PortNumber.portNumber(3))
+                .build();
+
+        TrafficTreatment expectOf2Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf3Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf3Treatment = DefaultTrafficTreatment.builder(ethDstTreatment)
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        TrafficSelector expectOf4Selector = DefaultTrafficSelector.builder(ipPrefixSelector)
+                .matchEthDst(MacAddress.valueOf("C0:FF:EE:C0:FF:EE"))
+                .matchInPort(PortNumber.portNumber(1))
+                .build();
+
+        TrafficTreatment expectOf4Treatment = DefaultTrafficTreatment.builder()
+                .setOutput(PortNumber.portNumber(2))
+                .build();
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(ipPrefixSelector)
+                .ingressPoints(ingress)
+                .egressPoints(egress)
+                .treatment(ethDstTreatment)
+                .links(testlinks)
+                .build();
+
+        List<Intent> result = sut.compile(intent, Collections.emptyList());
+
+        assertThat(result, is(notNullValue()));
+        assertThat(result, hasSize(1));
+
+        Intent resultIntent = result.get(0);
+        assertThat(resultIntent, instanceOf(FlowRuleIntent.class));
+
+        if (resultIntent instanceof FlowRuleIntent) {
+            FlowRuleIntent frIntent = (FlowRuleIntent) resultIntent;
+            assertThat(frIntent.flowRules(), hasSize(5));
+
+            List<FlowRule> deviceFlowRules;
+            FlowRule flowRule;
+
+            // Of1
+            deviceFlowRules = getFlowRulesByDevice(of1Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf1Selector));
+            assertThat(flowRule.treatment(), is(expectOf1Treatment));
+
+            // Of2 (has 2 flows)
+            deviceFlowRules = getFlowRulesByDevice(of2Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(2));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf2Selector1));
+            assertThat(flowRule.treatment(), is(expectOf2Treatment));
+            flowRule = deviceFlowRules.get(1);
+            assertThat(flowRule.selector(), is(expectOf2Selector2));
+            assertThat(flowRule.treatment(), is(expectOf2Treatment));
+
+            // Of3
+            deviceFlowRules = getFlowRulesByDevice(of3Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf3Selector));
+            assertThat(flowRule.treatment(), is(expectOf3Treatment));
+
+            // Of4
+            deviceFlowRules = getFlowRulesByDevice(of4Id, frIntent.flowRules());
+            assertThat(deviceFlowRules, hasSize(1));
+            flowRule = deviceFlowRules.get(0);
+            assertThat(flowRule.selector(), is(expectOf4Selector));
+            assertThat(flowRule.treatment(), is(expectOf4Treatment));
+        }
+
+        sut.deactivate();
+    }
+
+    /**
+     * We test the proper compilation of mp2sp with
+     * trivial selector, trivial treatment and 1 hop.
+     */
+    @Test
+    public void singleHopTestForMp() {
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(selector)
+                .treatment(treatment)
+                .links(ImmutableSet.of())
+                .filteredIngressPoints(ImmutableSet.of(
+                        new FilteredConnectPoint(d1p10),
+                        new FilteredConnectPoint(d1p11)
+                ))
+                .filteredEgressPoints(ImmutableSet.of(new FilteredConnectPoint(d1p0)))
+                .build();
+
         sut.activate();
 
-        List<Intent> compiled = sut.compile(intentMultipleTreatments, Collections.emptyList());
+        List<Intent> compiled = sut.compile(intent, Collections.emptyList());
         assertThat(compiled, hasSize(1));
 
         Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
         assertThat(rules, hasSize(2));
 
-        Set<FlowRule> d3Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId()))
-                .collect(Collectors.toSet());
-        assertThat(d3Rules, hasSize(intentMultipleTreatments.ingressPoints().size()));
-
-        FlowRule rule1 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId()))
-                .findFirst()
-                .get();
-        assertThat(rule1.selector(), is(
-                DefaultTrafficSelector
-                        .builder(intentMultipleTreatments.selector())
-                        .matchInPort(d3p0.port())
-                        .matchVlanId(ingressVlan)
-                        .build()
-        ));
-        assertThat(rule1.treatment(), is(
-                DefaultTrafficTreatment
-                        .builder(intentMultipleTreatments.treatment())
-                        .setOutput(d3p1.port())
-                        .build()
-        ));
-        assertThat(rule1.priority(), is(intentMultipleTreatments.priority()));
-
-        Set<FlowRule> d2Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d2p0.deviceId()))
-                .collect(Collectors.toSet());
-        assertThat(d2Rules, hasSize(1));
-
-        FlowRule rule2 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d2p0.deviceId()))
-                .findFirst()
-                .get();
-        assertThat(rule2.selector(), is(
-                DefaultTrafficSelector
-                        .builder(intentMultipleTreatments.selector())
-                        .matchInPort(d2p0.port())
-                        .matchVlanId(ingressVlan)
-                        .build()
-        ));
-        assertThat(rule2.treatment(), is(
-                DefaultTrafficTreatment
-                        .builder(intentMultipleTreatments.treatment())
-                        .setVlanId(egressVlan1)
-                        .setOutput(d2p1.port())
-                        .setVlanId(egressVlan2)
-                        .setOutput(d2p2.port())
-                        .build()
-        ));
-        assertThat(rule2.priority(), is(intentMultipleTreatments.priority()));
-
-    }
-
-    @Test
-    public void testCompileMultipleTreatments2() {
-        sut.activate();
-
-        List<Intent> compiled = sut.compile(intentMultipleTreatments2, Collections.emptyList());
-        assertThat(compiled, hasSize(1));
-
-
-        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
-        assertThat(rules, hasSize(4));
-
-
-        Set<FlowRule> d2Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d2p0.deviceId()))
-                .collect(Collectors.toSet());
-        assertThat(d2Rules, hasSize(1));
-
-
-        FlowRule rule1 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d2p0.deviceId()))
-                .findFirst()
-                .get();
-        assertThat(rule1.selector(), is(
-                DefaultTrafficSelector
-                        .builder(intentMultipleTreatments.selector())
-                        .matchInPort(d2p3.port())
-                        .matchVlanId(ingressVlan)
-                        .build()
-        ));
-        assertThat(rule1.treatment(), is(
-                DefaultTrafficTreatment
-                        .builder(intentMultipleTreatments.treatment())
-                        .setOutput(d2p0.port())
-                        .setOutput(d2p1.port())
-                        .setOutput(d2p2.port())
-                        .build()
-        ));
-        assertThat(rule1.priority(), is(intentMultipleTreatments.priority()));
-
-        Set<FlowRule> d1Rules = rules
-                .parallelStream()
+        Collection<FlowRule> rulesS1 = rules.stream()
                 .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
                 .collect(Collectors.toSet());
-        assertThat(d1Rules, hasSize(1));
-
-        FlowRule rule2 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
+        assertThat(rulesS1, hasSize(2));
+        FlowRule ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p10.port());
+                })
                 .findFirst()
                 .get();
-        assertThat(rule2.selector(), is(
+        assertThat(ruleS1.selector(), Is.is(
                 DefaultTrafficSelector
-                        .builder(intentMultipleTreatments2.selector())
-                        .matchInPort(d1p1.port())
-                        .matchVlanId(ingressVlan)
+                        .builder()
+                        .matchInPort(d1p10.port())
                         .build()
         ));
-        assertThat(rule2.treatment(), is(
+        assertThat(ruleS1.treatment(), Is.is(
                 DefaultTrafficTreatment
-                        .builder(intentMultipleTreatments2.treatment())
-                        .setVlanId(egressVlan1)
+                        .builder()
                         .setOutput(d1p0.port())
                         .build()
         ));
-        assertThat(rule2.priority(), is(intentMultipleTreatments.priority()));
 
-        Set<FlowRule> d3Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId()))
-                .collect(Collectors.toSet());
-        assertThat(d3Rules, hasSize(1));
-
-        FlowRule rule3 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d3p0.deviceId()))
+        ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p11.port());
+                })
                 .findFirst()
                 .get();
-        assertThat(rule3.selector(), is(
+        assertThat(ruleS1.selector(), Is.is(
                 DefaultTrafficSelector
-                        .builder(intentMultipleTreatments2.selector())
-                        .matchInPort(d3p1.port())
-                        .matchVlanId(ingressVlan)
+                        .builder()
+                        .matchInPort(d1p11.port())
                         .build()
         ));
-        assertThat(rule3.treatment(), is(
+        assertThat(ruleS1.treatment(), Is.is(
                 DefaultTrafficTreatment
-                        .builder(intentMultipleTreatments2.treatment())
-                        .setVlanId(egressVlan2)
-                        .setOutput(d3p0.port())
+                        .builder()
+                        .setOutput(d1p0.port())
                         .build()
         ));
-        assertThat(rule3.priority(), is(intentMultipleTreatments.priority()));
 
-        Set<FlowRule> d4Rules = rules
-                .parallelStream()
-                .filter(rule -> rule.deviceId().equals(d4p0.deviceId()))
+        sut.deactivate();
+
+    }
+
+    /**
+     * We test the proper compilation of sp2mp with
+     * trivial selector, trivial treatment and 1 hop.
+     */
+    @Test
+    public void singleHopTestForSp() {
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(selector)
+                .treatment(treatment)
+                .applyTreatmentOnEgress(true)
+                .links(ImmutableSet.of())
+                .filteredEgressPoints(ImmutableSet.of(
+                        new FilteredConnectPoint(d1p10),
+                        new FilteredConnectPoint(d1p11)
+                ))
+                .filteredIngressPoints(ImmutableSet.of(new FilteredConnectPoint(d1p0)))
+                .build();
+
+        sut.activate();
+
+        List<Intent> compiled = sut.compile(intent, Collections.emptyList());
+        assertThat(compiled, hasSize(1));
+
+        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
+        assertThat(rules, hasSize(1));
+
+        Collection<FlowRule> rulesS1 = rules.stream()
+                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
                 .collect(Collectors.toSet());
-        assertThat(d4Rules, hasSize(1));
-
-        FlowRule rule4 = rules.stream()
-                .filter(rule -> rule.deviceId().equals(d4p0.deviceId()))
+        assertThat(rulesS1, hasSize(1));
+        FlowRule ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p0.port());
+                })
                 .findFirst()
                 .get();
-        assertThat(rule4.selector(), is(
+        assertThat(ruleS1.selector(), Is.is(
                 DefaultTrafficSelector
-                        .builder(intentMultipleTreatments2.selector())
-                        .matchInPort(d4p1.port())
-                        .matchVlanId(ingressVlan)
+                        .builder()
+                        .matchInPort(d1p0.port())
                         .build()
         ));
-        assertThat(rule4.treatment(), is(
+        assertThat(ruleS1.treatment(), Is.is(
                 DefaultTrafficTreatment
-                        .builder(intentMultipleTreatments2.treatment())
-                        .setVlanId(egressVlan3)
-                        .setOutput(d4p0.port())
+                        .builder()
+                        .setOutput(d1p10.port())
+                        .setOutput(d1p11.port())
                         .build()
         ));
-        assertThat(rule4.priority(), is(intentMultipleTreatments.priority()));
+
+        sut.deactivate();
 
     }
 
-    public Map<ConnectPoint, TrafficTreatment> createEgressTreatments() {
-        Map<ConnectPoint, TrafficTreatment> mapToReturn = Maps.newHashMap();
-        mapToReturn.put(d2p1, vlanTreatment1);
-        mapToReturn.put(d2p2, vlanTreatment2);
-        return mapToReturn;
+    /**
+     * We test the proper compilation of mp2sp with
+     * trivial selector, trivial treatment, filtered
+     * points and 1 hop.
+     */
+    @Test
+    public void singleHopTestFilteredForMp() {
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(selector)
+                .treatment(treatment)
+                .links(ImmutableSet.of())
+                .filteredIngressPoints(ImmutableSet.of(
+                        new FilteredConnectPoint(d1p10, vlan100Selector),
+                        new FilteredConnectPoint(d1p11, mpls69Selector)
+                ))
+                .filteredEgressPoints(ImmutableSet.of(new FilteredConnectPoint(d1p0, vlan200Selector)))
+                .build();
+
+        sut.activate();
+
+        List<Intent> compiled = sut.compile(intent, Collections.emptyList());
+        assertThat(compiled, hasSize(1));
+
+        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
+        assertThat(rules, hasSize(2));
+
+        Collection<FlowRule> rulesS1 = rules.stream()
+                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
+                .collect(Collectors.toSet());
+        assertThat(rulesS1, hasSize(2));
+        FlowRule ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p10.port());
+                })
+                .findFirst()
+                .get();
+        assertThat(ruleS1.selector(), Is.is(
+                DefaultTrafficSelector
+                        .builder(vlan100Selector)
+                        .matchInPort(d1p10.port())
+                        .build()
+        ));
+        assertThat(ruleS1.treatment(), Is.is(
+                DefaultTrafficTreatment
+                        .builder()
+                        .setVlanId(((VlanIdCriterion) vlan200Selector.getCriterion(VLAN_VID)).vlanId())
+                        .setOutput(d1p0.port())
+                        .build()
+        ));
+
+        ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p11.port());
+                })
+                .findFirst()
+                .get();
+        assertThat(ruleS1.selector(), Is.is(
+                DefaultTrafficSelector
+                        .builder(mpls69Selector)
+                        .matchInPort(d1p11.port())
+                        .build()
+        ));
+        assertThat(ruleS1.treatment(), Is.is(
+                DefaultTrafficTreatment
+                        .builder()
+                        .popMpls(IPV4.ethType())
+                        .pushVlan()
+                        .setVlanId(((VlanIdCriterion) vlan200Selector.getCriterion(VLAN_VID)).vlanId())
+                        .setOutput(d1p0.port())
+                        .build()
+        ));
+
+        sut.deactivate();
+
     }
 
-    public Map<ConnectPoint, TrafficTreatment> createEgressTreatments2() {
-        Map<ConnectPoint, TrafficTreatment> mapToReturn = Maps.newHashMap();
-        mapToReturn.put(d1p0, vlanTreatment1);
-        mapToReturn.put(d3p0, vlanTreatment2);
-        mapToReturn.put(d4p0, vlanTreatment3);
-        return mapToReturn;
+    /**
+     * We test the proper compilation of sp2mp with
+     * trivial selector, trivial treatment and 1 hop.
+     */
+    @Test
+    public void singleHopTestFilteredForSp() {
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(selector)
+                .treatment(treatment)
+                .applyTreatmentOnEgress(true)
+                .links(ImmutableSet.of())
+                .filteredEgressPoints(ImmutableSet.of(
+                        new FilteredConnectPoint(d1p10, vlan100Selector),
+                        new FilteredConnectPoint(d1p11, mpls80Selector)
+                ))
+                .filteredIngressPoints(ImmutableSet.of(new FilteredConnectPoint(d1p0, vlan200Selector)))
+                .build();
+
+        sut.activate();
+
+        List<Intent> compiled = sut.compile(intent, Collections.emptyList());
+        assertThat(compiled, hasSize(1));
+
+        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
+        assertThat(rules, hasSize(1));
+
+        Collection<FlowRule> rulesS1 = rules.stream()
+                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
+                .collect(Collectors.toSet());
+        assertThat(rulesS1, hasSize(1));
+        FlowRule ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p0.port());
+                })
+                .findFirst()
+                .get();
+        assertThat(ruleS1.selector(), Is.is(
+                DefaultTrafficSelector
+                        .builder(vlan200Selector)
+                        .matchInPort(d1p0.port())
+                        .build()
+        ));
+        assertThat(ruleS1.treatment(), Is.is(
+                DefaultTrafficTreatment
+                        .builder()
+                        .setVlanId(((VlanIdCriterion) vlan100Selector.getCriterion(VLAN_VID)).vlanId())
+                        .setOutput(d1p10.port())
+                        .popVlan()
+                        .pushMpls()
+                        .setMpls(((MplsCriterion) mpls80Selector.getCriterion(MPLS_LABEL)).label())
+                        .setOutput(d1p11.port())
+                        .build()
+        ));
+
+        sut.deactivate();
+
     }
 
-    public Map<ConnectPoint, TrafficSelector> createIngressSelectors() {
-        Map<ConnectPoint, TrafficSelector> mapToReturn = Maps.newHashMap();
-        mapToReturn.put(d3p0, selectorVlan1);
-        mapToReturn.put(d3p2, selectorVlan2);
-        return mapToReturn;
+    /**
+     * We test the proper compilation of mp2sp with
+     * selector, treatment, filtered
+     * points and 1 hop.
+     */
+    @Test
+    public void singleHopNonTrivialForMp() {
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(ipPrefixSelector)
+                .treatment(ethDstTreatment)
+                .links(ImmutableSet.of())
+                .filteredIngressPoints(ImmutableSet.of(
+                        new FilteredConnectPoint(d1p10, vlan100Selector),
+                        new FilteredConnectPoint(d1p11, mpls100Selector)
+                ))
+                .filteredEgressPoints(ImmutableSet.of(new FilteredConnectPoint(d1p0, vlan200Selector)))
+                .build();
+
+        sut.activate();
+
+        List<Intent> compiled = sut.compile(intent, Collections.emptyList());
+        assertThat(compiled, hasSize(1));
+
+        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
+        assertThat(rules, hasSize(2));
+
+        Collection<FlowRule> rulesS1 = rules.stream()
+                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
+                .collect(Collectors.toSet());
+        assertThat(rulesS1, hasSize(2));
+        FlowRule ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p10.port());
+                })
+                .findFirst()
+                .get();
+        assertThat(ruleS1.selector(), Is.is(
+                DefaultTrafficSelector
+                        .builder(ipPrefixSelector)
+                        .matchVlanId(((VlanIdCriterion) vlan100Selector.getCriterion(VLAN_VID)).vlanId())
+                        .matchInPort(d1p10.port())
+                        .build()
+        ));
+        assertThat(ruleS1.treatment(), Is.is(
+                DefaultTrafficTreatment
+                        .builder()
+                        .setEthDst(((ModEtherInstruction) ethDstTreatment
+                                .allInstructions()
+                                .stream()
+                                .filter(instruction -> instruction instanceof ModEtherInstruction)
+                                .findFirst().get()).mac())
+                        .setVlanId(((VlanIdCriterion) vlan200Selector.getCriterion(VLAN_VID)).vlanId())
+                        .setOutput(d1p0.port())
+                        .build()
+        ));
+
+        ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p11.port());
+                })
+                .findFirst()
+                .get();
+        assertThat(ruleS1.selector(), Is.is(
+                DefaultTrafficSelector
+                        .builder(ipPrefixSelector)
+                        .matchMplsLabel(((MplsCriterion) mpls100Selector.getCriterion(MPLS_LABEL)).label())
+                        .matchInPort(d1p11.port())
+                        .build()
+        ));
+        assertThat(ruleS1.treatment(), Is.is(
+                DefaultTrafficTreatment
+                        .builder()
+                        .setEthDst(((ModEtherInstruction) ethDstTreatment
+                                .allInstructions()
+                                .stream()
+                                .filter(instruction -> instruction instanceof ModEtherInstruction)
+                                .findFirst().get()).mac())
+                        .popMpls(IPV4.ethType())
+                        .pushVlan()
+                        .setVlanId(((VlanIdCriterion) vlan200Selector.getCriterion(VLAN_VID)).vlanId())
+                        .setOutput(d1p0.port())
+                        .build()
+        ));
+
+        sut.deactivate();
+
+    }
+
+    /**
+     * We test the proper compilation of sp2mp with
+     * selector, treatment and 1 hop.
+     */
+    @Test
+    public void singleHopNonTrivialForSp() {
+
+        intent = LinkCollectionIntent.builder()
+                .appId(APP_ID)
+                .selector(ipPrefixSelector)
+                .treatment(ethDstTreatment)
+                .applyTreatmentOnEgress(true)
+                .links(ImmutableSet.of())
+                .filteredEgressPoints(ImmutableSet.of(
+                        new FilteredConnectPoint(d1p10, vlan100Selector),
+                        new FilteredConnectPoint(d1p11, mpls200Selector)
+                ))
+                .filteredIngressPoints(ImmutableSet.of(new FilteredConnectPoint(d1p0, vlan200Selector)))
+                .build();
+
+        sut.activate();
+
+        List<Intent> compiled = sut.compile(intent, Collections.emptyList());
+        assertThat(compiled, hasSize(1));
+
+        Collection<FlowRule> rules = ((FlowRuleIntent) compiled.get(0)).flowRules();
+        assertThat(rules, hasSize(1));
+
+        Collection<FlowRule> rulesS1 = rules.stream()
+                .filter(rule -> rule.deviceId().equals(d1p0.deviceId()))
+                .collect(Collectors.toSet());
+        assertThat(rulesS1, hasSize(1));
+        FlowRule ruleS1 = rulesS1.stream()
+                .filter(rule -> {
+                    PortCriterion inPort = (PortCriterion) rule.selector().getCriterion(IN_PORT);
+                    return inPort.port().equals(d1p0.port());
+                })
+                .findFirst()
+                .get();
+        assertThat(ruleS1.selector(), Is.is(
+                DefaultTrafficSelector
+                        .builder(ipPrefixSelector)
+                        .matchVlanId(((VlanIdCriterion) vlan200Selector.getCriterion(VLAN_VID)).vlanId())
+                        .matchInPort(d1p0.port())
+                        .build()
+        ));
+        assertThat(ruleS1.treatment(), Is.is(
+                DefaultTrafficTreatment
+                        .builder()
+                        .setEthDst(((ModEtherInstruction) ethDstTreatment
+                                .allInstructions()
+                                .stream()
+                                .filter(instruction -> instruction instanceof ModEtherInstruction)
+                                .findFirst().get()).mac())
+                        .setVlanId(((VlanIdCriterion) vlan100Selector.getCriterion(VLAN_VID)).vlanId())
+                        .setOutput(d1p10.port())
+                        .setEthDst(((ModEtherInstruction) ethDstTreatment
+                                .allInstructions()
+                                .stream()
+                                .filter(instruction -> instruction instanceof ModEtherInstruction)
+                                .findFirst().get()).mac())
+                        .popVlan()
+                        .pushMpls()
+                        .setMpls(((MplsCriterion) mpls200Selector.getCriterion(MPLS_LABEL)).label())
+                        .setOutput(d1p11.port())
+                        .build()
+        ));
+
+        sut.deactivate();
+
     }
 
 }

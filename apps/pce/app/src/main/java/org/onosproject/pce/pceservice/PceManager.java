@@ -24,7 +24,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
@@ -227,7 +226,9 @@ public class PceManager implements PceService {
         if (pathService == null) {
             return ImmutableSet.of();
         }
+
         Set<Path> paths = pathService.getPaths(src, dst, weight(constraints));
+        log.info("paths in computePath ::" + paths);
         if (!paths.isEmpty()) {
             return paths;
         }
@@ -243,6 +244,7 @@ public class PceManager implements PceService {
                 computedPath.get(size - 1).dst().deviceId();
 
         Set<Path> tempComputePath = computePath(deviceId, dst, constraints);
+
         if (tempComputePath.isEmpty()) {
             return null;
         }
@@ -311,7 +313,6 @@ public class PceManager implements PceService {
                 }
             }
         }
-
         return true;
     }
 
@@ -332,14 +333,16 @@ public class PceManager implements PceService {
                 if (info.value() instanceof DeviceId) {
                     // If deviceId is source no need to compute
                     if (!(info.value()).equals(src)) {
+                        log.debug("computeExplicitPath :: Loose , device");
                         finalComputedPath = computePartialPath(finalComputedPath, src, (DeviceId) info.value(),
                                 constraints);
+                        log.debug("finalComputedPath in computeExplicitPath ::" + finalComputedPath);
                     }
 
                 } else if (info.value() instanceof Link) {
                     if ((((Link) info.value()).src().deviceId().equals(src))
                             || (!finalComputedPath.isEmpty()
-                            && finalComputedPath.get(finalComputedPath.size() - 1).dst().equals(
+                            && finalComputedPath.get(finalComputedPath.size() - 1).dst().deviceId().equals(
                                     ((Link) info.value()).src().deviceId()))) {
 
                         finalComputedPath = computePartialPath(finalComputedPath, src, ((Link) info.value()).dst()
@@ -354,7 +357,7 @@ public class PceManager implements PceService {
                 /*
                  * If explicit path object is STRICT,
                  * 1) If specified as DeviceId (node) :
-                 * Check whether partial computed path has reachable to strict specified node or
+                 * Check whether partial computed path has reachable to strict specified node orde
                  * strict node is the source, if no set path as null else do nothing
                  * 2) If specified as Link :
                  * Check whether partial computed path has reachable to strict link's src, if yes compute
@@ -362,6 +365,7 @@ public class PceManager implements PceService {
                  */
             } else if (info.type().equals(ExplicitPathInfo.Type.STRICT)) {
                 if (info.value() instanceof DeviceId) {
+                    log.debug("computeExplicitPath :: Strict , device");
                     if (!(!finalComputedPath.isEmpty() && finalComputedPath.get(finalComputedPath.size() - 1).dst()
                             .deviceId().equals(info.value()))
                             && !info.value().equals(src)) {
@@ -369,13 +373,20 @@ public class PceManager implements PceService {
                     }
 
                 } else if (info.value() instanceof Link) {
-
+                    log.info("computeExplicitPath :: Strict");
                     finalComputedPath = ((Link) info.value()).src().deviceId().equals(src)
                             || !finalComputedPath.isEmpty()
                             && finalComputedPath.get(finalComputedPath.size() - 1).dst().deviceId()
                                     .equals(((Link) info.value()).src().deviceId()) ? computePartialPath(
                             finalComputedPath, src, ((Link) info.value()).dst().deviceId(), constraints) : null;
 
+                    //Log.info("computeExplicitPath :: (Link) info.value() " + (Link) info.value());
+                    //Log.info("computeExplicitPath :: finalComputedPath " + finalComputedPath);
+
+                    if (finalComputedPath != null && !finalComputedPath.get(finalComputedPath.size() - 1).links()
+                            .contains((Link) info.value())) {
+                        finalComputedPath = null;
+                    }
                 }
             }
             if (finalComputedPath == null) {

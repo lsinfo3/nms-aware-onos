@@ -264,11 +264,27 @@ public class FlowRuleManager
         removeFlowRules(Iterables.toArray(getFlowRulesById(id), FlowRule.class));
     }
 
+    @Deprecated
     @Override
     public Iterable<FlowRule> getFlowRulesById(ApplicationId id) {
         checkPermission(FLOWRULE_READ);
 
         Set<FlowRule> flowEntries = Sets.newHashSet();
+        for (Device d : deviceService.getDevices()) {
+            for (FlowEntry flowEntry : store.getFlowEntries(d.id())) {
+                if (flowEntry.appId() == id.id()) {
+                    flowEntries.add(flowEntry);
+                }
+            }
+        }
+        return flowEntries;
+    }
+
+    @Override
+    public Iterable<FlowEntry> getFlowEntriesById(ApplicationId id) {
+        checkPermission(FLOWRULE_READ);
+
+        Set<FlowEntry> flowEntries = Sets.newHashSet();
         for (Device d : deviceService.getDevices()) {
             for (FlowEntry flowEntry : store.getFlowEntries(d.id())) {
                 if (flowEntry.appId() == id.id()) {
@@ -603,20 +619,12 @@ public class FlowRuleManager
 
         // Mutable
         private final List<Set<FlowRuleOperation>> stages;
-        private final Set<DeviceId> pendingDevices;
+        private final Set<DeviceId> pendingDevices = new HashSet<>();
         private boolean hasFailed = false;
 
         FlowOperationsProcessor(FlowRuleOperations ops) {
             this.stages = Lists.newArrayList(ops.stages());
             this.fops = ops;
-            this.pendingDevices = new HashSet<>();
-        }
-
-        FlowOperationsProcessor(FlowOperationsProcessor src, boolean hasFailed) {
-            this.fops = src.fops;
-            this.stages = Lists.newArrayList(src.stages);
-            this.pendingDevices = new HashSet<>(src.pendingDevices);
-            this.hasFailed = hasFailed;
         }
 
         @Override
@@ -649,14 +657,15 @@ public class FlowRuleManager
         synchronized void satisfy(DeviceId devId) {
             pendingDevices.remove(devId);
             if (pendingDevices.isEmpty()) {
-                operationsService.execute(new FlowOperationsProcessor(this, hasFailed));
+                operationsService.execute(this);
             }
         }
 
         synchronized void fail(DeviceId devId, Set<? extends FlowRule> failures) {
+            hasFailed = true;
             pendingDevices.remove(devId);
             if (pendingDevices.isEmpty()) {
-                operationsService.execute(new FlowOperationsProcessor(this, true));
+                operationsService.execute(this);
             }
 
             FlowRuleOperations.Builder failedOpsBuilder = FlowRuleOperations.builder();

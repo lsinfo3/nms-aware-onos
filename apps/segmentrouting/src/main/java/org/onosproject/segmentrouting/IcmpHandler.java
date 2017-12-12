@@ -145,22 +145,22 @@ public class IcmpHandler {
 
         Ip4Address destIpAddress = Ip4Address.valueOf(icmpReplyIpv4.getDestinationAddress());
         Ip4Address destRouterAddress = config.getRouterIpAddressForASubnetHost(destIpAddress);
-        int sid = config.getSegmentId(destRouterAddress);
-        if (sid < 0) {
+        int destSid = config.getSegmentId(destRouterAddress);
+        if (destSid < 0) {
             log.warn("Cannot find the Segment ID for {}", destAddress);
             return;
         }
 
-        sendPacketOut(outport, icmpReplyEth, sid);
+        sendPacketOut(outport, icmpReplyEth, destSid);
 
     }
 
-    private void sendPacketOut(ConnectPoint outport, Ethernet payload, int sid) {
+    private void sendPacketOut(ConnectPoint outport, Ethernet payload, int destSid) {
 
         IPv4 ipPacket = (IPv4) payload.getPayload();
         Ip4Address destIpAddress = Ip4Address.valueOf(ipPacket.getDestinationAddress());
 
-        if (sid == -1 || config.getSegmentId(payload.getDestinationMAC()) == sid ||
+        if (destSid == -1 || config.getSegmentId(payload.getDestinationMAC()) == destSid ||
                 config.inSameSubnet(outport.deviceId(), destIpAddress)) {
             TrafficTreatment treatment = DefaultTrafficTreatment.builder().
                     setOutput(outport.port()).build();
@@ -168,14 +168,14 @@ public class IcmpHandler {
                     treatment, ByteBuffer.wrap(payload.serialize()));
             srManager.packetService.emit(packet);
         } else {
-            log.info("Send a MPLS packet as a ICMP response");
+            log.debug("Send a MPLS packet as a ICMP response");
             TrafficTreatment treatment = DefaultTrafficTreatment.builder()
                     .setOutput(outport.port())
                     .build();
 
             payload.setEtherType(Ethernet.MPLS_UNICAST);
             MPLS mplsPkt = new MPLS();
-            mplsPkt.setLabel(sid);
+            mplsPkt.setLabel(destSid);
             mplsPkt.setTtl(((IPv4) payload.getPayload()).getTtl());
             mplsPkt.setPayload(payload.getPayload());
             payload.setPayload(mplsPkt);

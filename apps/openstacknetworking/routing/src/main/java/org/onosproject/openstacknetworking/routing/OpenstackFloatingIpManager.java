@@ -156,6 +156,32 @@ public class OpenstackFloatingIpManager extends AbstractVmHandler implements Ope
     }
 
     @Override
+    public void reinstallVmFlow(Host host) {
+        if (host == null) {
+            hostService.getHosts().forEach(h -> {
+                hostDetected(h);
+                log.info("Re-Install data plane flow of virtual machine {}", h);
+            });
+        } else {
+            hostDetected(host);
+            log.info("Re-Install data plane flow of virtual machine {}", host);
+        }
+    }
+
+    @Override
+    public void purgeVmFlow(Host host) {
+        if (host == null) {
+            hostService.getHosts().forEach(h -> {
+                hostRemoved(h);
+                log.info("Purge data plane flow of virtual machine {}", h);
+            });
+        } else {
+            hostRemoved(host);
+            log.info("Purge data plane flow of virtual machine {}", host);
+        }
+    }
+
+    @Override
     public void createFloatingIp(OpenstackFloatingIP floatingIp) {
     }
 
@@ -231,7 +257,7 @@ public class OpenstackFloatingIpManager extends AbstractVmHandler implements Ope
         sIncomingBuilder.matchEthType(Ethernet.TYPE_IPV4)
                 .matchIPDst(floatingIp.toIpPrefix());
 
-        gatewayService.getGatewayDeviceIds().stream().forEach(deviceId -> {
+        gatewayService.getGatewayDeviceIds().forEach(deviceId -> {
             TrafficSelector.Builder sForTrafficFromVmBuilder = DefaultTrafficSelector.builder()
                     .matchEthType(Ethernet.TYPE_IPV4)
                     .matchIPDst(floatingIp.toIpPrefix())
@@ -278,8 +304,8 @@ public class OpenstackFloatingIpManager extends AbstractVmHandler implements Ope
                 .matchIPDst(floatingIp.toIpPrefix())
                 .build();
 
-        gatewayService.getGatewayDeviceIds().stream().forEach(gnodeId -> {
-            TrafficTreatment treatmentForTrafficFromExternal =  DefaultTrafficTreatment.builder()
+        gatewayService.getGatewayDeviceIds().forEach(gnodeId -> {
+            TrafficTreatment treatmentForTrafficFromExternal = DefaultTrafficTreatment.builder()
                     .setEthSrc(Constants.DEFAULT_GATEWAY_MAC)
                     .setEthDst(associatedVm.mac())
                     .setIpDst(associatedVm.ipAddresses().stream().findFirst().get())
@@ -336,7 +362,7 @@ public class OpenstackFloatingIpManager extends AbstractVmHandler implements Ope
                 .matchIPSrc(associatedVm.ipAddresses().stream().findFirst().get().toIpPrefix())
                 .build();
 
-        gatewayService.getGatewayDeviceIds().stream().forEach(gnodeId -> {
+        gatewayService.getGatewayDeviceIds().forEach(gnodeId -> {
             TrafficTreatment treatment = DefaultTrafficTreatment.builder()
                     .setIpSrc(floatingIp)
                     .setEthSrc(Constants.DEFAULT_GATEWAY_MAC)

@@ -413,6 +413,87 @@
         return classes.join(' ');
     }
 
+    function extend(protoProps, staticProps) {
+
+        var parent = this,
+            child;
+
+        child = function () {
+        return parent.apply(this, arguments);
+        };
+
+        angular.extend(child, parent, staticProps);
+
+        // Set the prototype chain to inherit from `parent`, without calling
+        // `parent`'s constructor function and add the prototype properties.
+        child.prototype = angular.extend({}, parent.prototype, protoProps);
+        child.prototype.constructor = child;
+
+        // Set a convenience property in case the parent's prototype is needed
+        // later.
+        child.__super__ = parent.prototype;
+
+        return child;
+    }
+
+
+    // -----------------------------------------------------------------
+    // The next section deals with sanitizing external strings destined
+    // to be loaded via a .html() function call.
+
+    var matcher = /<\/?([a-zA-Z0-9]+)*(.*?)\/?>/igm,
+        whitelist = ['b', 'i', 'p', 'em', 'strong', 'br'],
+        evillist = ['script', 'style', 'iframe'];
+
+    // Returns true if the tag is in the evil list, (and is not an end-tag)
+    function inEvilList(tag) {
+        return (evillist.indexOf(tag.name) !== -1 && tag.full.indexOf('/') === -1);
+    }
+
+    function analyze(html) {
+        html = String(html) || '';
+
+        var matches = [],
+            match;
+
+        // extract all tags
+        while ((match = matcher.exec(html)) !== null) {
+            matches.push({
+                full: match[0],
+                name: match[1]
+                // NOTE: ignoring attributes {match[2].split(' ')} for now
+            });
+        }
+
+        return matches;
+    }
+
+    function sanitize(html) {
+        html = String(html) || '';
+
+        var matches = analyze(html);
+
+        // completely obliterate evil tags and their contents...
+        evillist.forEach(function (tag) {
+            var re = new RegExp('<' + tag + '(.*?)>(.*?[\r\n])*?(.*?)(.*?[\r\n])*?<\/' + tag + '>', 'gim');
+            html = html.replace(re, '');
+        });
+
+        // filter out all but white-listed tags and end-tags
+        matches.forEach(function (tag) {
+            if (whitelist.indexOf(tag.name) === -1) {
+                html = html.replace(tag.full, '');
+                if (inEvilList(tag)) {
+                    $log.warn('Unsanitary HTML input -- ' + tag.full + ' detected!');
+                }
+            }
+        });
+
+        // TODO: consider encoding HTML entities, e.g. '&' -> '&amp;'
+
+        return html;
+    }
+
 
     angular.module('onosUtil')
         .factory('FnService',
@@ -452,7 +533,9 @@
                 addToTrie: addToTrie,
                 removeFromTrie: removeFromTrie,
                 trieLookup: trieLookup,
-                classNames: classNames
+                classNames: classNames,
+                extend: extend,
+                sanitize: sanitize
             };
     }]);
 

@@ -42,6 +42,7 @@
         topo: 'topo',
 
         refresh: 'refresh',
+        query: 'query',
         garbage: 'garbage',
 
         upArrow: 'triangleUp',
@@ -49,6 +50,7 @@
 
         appInactive: 'unknown',
 
+        node: 'node',
         devIcon_SWITCH: 'switch',
         devIcon_ROADM: 'roadm',
         devIcon_OTN: 'otn',

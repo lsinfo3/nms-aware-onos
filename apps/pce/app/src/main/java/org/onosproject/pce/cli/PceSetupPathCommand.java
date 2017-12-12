@@ -87,7 +87,11 @@ public class PceSetupPathCommand extends AbstractShellCommand {
             + "Data rate unit is in BPS.", required = false, multiValued = false)
     double bandwidth = 0.0;
 
-    @Option(name = "-e", aliases = "--explicitPathObjects", description = "List of strict and loose hopes",
+    @Option(name = "-e", aliases = "--explicitPathObjects", description = "List of strict and loose hopes"
+            + " explicitPathInfo format : Type/SubType/Value(DeviceId or Link info)\n" +
+            " If Value is Device : Type/SubType/deviceId\n" +
+            " If Value is Link : Type/SubType/SourceDeviceId/SourcePortNo/DestinationDeviceId/DestinationPortNo" +
+            "Type 0 - strict, 1 - loose \n" + "SubType 0 - deviceId, 1 - link \n",
             required = false, multiValued = true)
     String[] explicitPathInfoStrings;
 

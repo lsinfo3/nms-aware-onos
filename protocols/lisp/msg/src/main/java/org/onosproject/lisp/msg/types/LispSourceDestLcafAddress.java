@@ -28,8 +28,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
 /**
  * Source/Dest key type LCAF address class.
  * <p>
- * Source destination key type is defined in draft-ietf-lisp-lcaf-13
- * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-13#page-18
+ * Source destination key type is defined in draft-ietf-lisp-lcaf-20
+ * https://tools.ietf.org/html/draft-ietf-lisp-lcaf-20#page-19
  *
  * <pre>
  * {@literal
@@ -38,7 +38,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * |           AFI = 16387         |     Rsvd1     |     Flags     |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- * |   Type = 12   |     Rsvd2     |             4 + n             |
+ * |   Type = 12   |     Rsvd2     |             Length            |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * |            Reserved           |   Source-ML   |    Dest-ML    |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -300,6 +300,7 @@ public final class LispSourceDestLcafAddress extends LispLcafAddress {
         public void writeTo(ByteBuf byteBuf, LispSourceDestLcafAddress address)
                 throws LispWriterException {
 
+            int lcafIndex = byteBuf.writerIndex();
             LispLcafAddress.serializeCommon(byteBuf, address);
 
             byteBuf.writeShort(address.getReserved());
@@ -308,6 +309,8 @@ public final class LispSourceDestLcafAddress extends LispLcafAddress {
             AfiAddressWriter writer = new LispAfiAddress.AfiAddressWriter();
             writer.writeTo(byteBuf, address.getSrcPrefix());
             writer.writeTo(byteBuf, address.getDstPrefix());
+
+            LispLcafAddress.updateLength(lcafIndex, byteBuf);
         }
     }
 }

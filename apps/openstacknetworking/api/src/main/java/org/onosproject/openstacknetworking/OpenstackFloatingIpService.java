@@ -15,6 +15,8 @@
  */
 package org.onosproject.openstacknetworking;
 
+import org.onosproject.net.Host;
+
 import org.onosproject.openstackinterface.OpenstackFloatingIP;
 
 /**
@@ -47,4 +49,18 @@ public interface OpenstackFloatingIpService {
      * @param floatingIpId floating ip identifier
      */
     void deleteFloatingIp(String floatingIpId);
+
+    /**
+     * Handles to purge data plane flow of existing VM.
+     *
+     * @param host VM Host information
+     */
+    void purgeVmFlow(Host host);
+
+    /**
+     * Handles to reinstall data plane flow of existing VM.
+     *
+     * @param host VM Host information
+     */
+    void reinstallVmFlow(Host host);
 }
