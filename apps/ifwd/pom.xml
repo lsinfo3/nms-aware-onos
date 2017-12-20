@@ -33,18 +33,15 @@
     <properties>
         <onos.app.name>org.onosproject.ifwd</onos.app.name>
         <onos.app.title>Intent Reactive Forwarding App</onos.app.title>
-        <onos.app.origin>ON.Lab</onos.app.origin>
         <onos.app.category>Traffic Steering</onos.app.category>
         <onos.app.url>http://onosproject.org</onos.app.url>
         <onos.app.readme>Intent reactive forwarding application using the intent subsystem.</onos.app.readme>
     </properties>
 
     <dependencies>
-
         <dependency>
             <groupId>org.onosproject</groupId>
             <artifactId>onos-api</artifactId>
-            <version>${project.version}</version>
         </dependency>
     </dependencies>
 
