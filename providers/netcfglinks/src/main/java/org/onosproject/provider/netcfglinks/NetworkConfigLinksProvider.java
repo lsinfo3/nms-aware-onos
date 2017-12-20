@@ -465,15 +465,17 @@ public class NetworkConfigLinksProvider
         @Override
         public void event(NetworkConfigEvent event) {
             if (event.configClass().equals(BasicLinkConfig.class)) {
-                log.info("net config event of type {} for basic link {}",
+                log.debug("net config event of type {} for basic link {}",
                          event.type(), event.subject());
                 LinkKey linkKey = (LinkKey) event.subject();
                 if (event.type() == NetworkConfigEvent.Type.CONFIG_ADDED) {
+                    // add the link to the configured link list
                     addLink(linkKey);
                 } else if (event.type() == NetworkConfigEvent.Type.CONFIG_REMOVED) {
+                    // remove link from link list and notify provider service
                     removeLink(linkKey);
                 }
-                log.info("Link reconfigured");
+                log.debug("Link reconfigured");
             }
         }
     }

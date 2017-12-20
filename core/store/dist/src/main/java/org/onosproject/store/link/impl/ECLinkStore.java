@@ -15,6 +15,7 @@
  */
 package org.onosproject.store.link.impl;
 
+import java.sql.Timestamp;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -61,6 +62,7 @@ import org.onosproject.store.cluster.messaging.ClusterCommunicationService;
 import org.onosproject.store.cluster.messaging.MessageSubject;
 import org.onosproject.store.impl.MastershipBasedTimestamp;
 import org.onosproject.store.serializers.KryoNamespaces;
+import org.onosproject.store.serializers.StoreSerializer;
 import org.onosproject.store.serializers.custom.DistributedStoreSerializers;
 import org.onosproject.store.service.EventuallyConsistentMap;
 import org.onosproject.store.service.EventuallyConsistentMapEvent;
@@ -74,6 +76,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
 
+import static org.onosproject.net.DefaultAnnotations.merge;
 import static org.onosproject.net.DefaultAnnotations.union;
 import static org.onosproject.net.Link.State.ACTIVE;
 import static org.onosproject.net.Link.State.INACTIVE;
@@ -116,7 +119,7 @@ public class ECLinkStore
     private final Logger log = getLogger(getClass());
 
     private final Map<LinkKey, Link> links = Maps.newConcurrentMap();
-    private final Map<LinkKey, Set<ProviderId>> linkProviders = Maps.newConcurrentMap();
+    private final Map<LinkKey, Map<ProviderId, Timestamp>> linkProviders = Maps.newConcurrentMap();
     private EventuallyConsistentMap<Provided<LinkKey>, LinkDescription> linkDescriptions;
 
 
@@ -244,7 +247,7 @@ public class ECLinkStore
     }
 
     @Override
-    public LinkEvent createOrUpdateLink(ProviderId providerId,
+    public synchronized LinkEvent createOrUpdateLink(ProviderId providerId,
                                         LinkDescription linkDescription) {
         final DeviceId dstDeviceId = linkDescription.dst().deviceId();
         final NodeId dstNodeId = mastershipService.getMasterFor(dstDeviceId);
@@ -258,7 +261,12 @@ public class ECLinkStore
                 return null;
             }
             linkDescriptions.compute(internalLinkKey, (k, v) -> createOrUpdateLinkInternal(v, linkDescription));
-            return refreshLinkCache(linkKey);
+            // this provider updated the link description, whether new information was added or not
+            // -> update link providers
+            linkProviders.compute(internalLinkKey.key(), (k, v) -> createOrUpdateLinkProviders(v, providerId));
+
+            LinkEvent linkEvent = refreshLinkCache(linkKey);
+            return linkEvent;
         } else {
             // Only forward for ConfigProvider or NullProvider
             // Forwarding was added as a workaround for ONOS-490
@@ -299,21 +307,23 @@ public class ECLinkStore
             } else {
                 type = updated.type();
             }
-            return new DefaultLinkDescription(
+            LinkDescription ld = new DefaultLinkDescription(
                     current.src(),
                     current.dst(),
                     type,
                     current.isExpected(),
                     union(current.annotations(), updated.annotations()));
+            return ld;
         }
         return updated;
     }
 
-    private Set<ProviderId> createOrUpdateLinkProviders(Set<ProviderId> current, ProviderId providerId) {
+    private Map<ProviderId, Timestamp> createOrUpdateLinkProviders(Map<ProviderId, Timestamp> current,
+                                                                   ProviderId providerId) {
         if (current == null) {
-            current = Sets.newConcurrentHashSet();
+            current = Maps.newConcurrentMap();
         }
-        current.add(providerId);
+        current.put(providerId, new Timestamp(System.currentTimeMillis()));
         return current;
     }
 
@@ -340,17 +350,19 @@ public class ECLinkStore
         return eventType.get() != null ? new LinkEvent(eventType.get(), link) : null;
     }
 
-    private Set<ProviderId> getAllProviders(LinkKey linkKey) {
-        return linkProviders.getOrDefault(linkKey, Sets.newConcurrentHashSet());
+    private Map<ProviderId, Timestamp> getAllProviders(LinkKey linkKey) {
+        return linkProviders.getOrDefault(linkKey, Maps.newConcurrentMap());
     }
 
+    // return the latest base provider instead of a random one
     private ProviderId getBaseProviderId(LinkKey linkKey) {
-        Set<ProviderId> allProviders = getAllProviders(linkKey);
+        Map<ProviderId, Timestamp> allProviders = getAllProviders(linkKey);
         if (allProviders.size() > 0) {
-            return allProviders.stream()
-                    .filter(p -> !p.isAncillary())
-                    .findFirst()
-                    .orElse(Iterables.getFirst(allProviders, null));
+            return allProviders.entrySet().stream()
+                    .filter(e -> !e.getKey().isAncillary())
+                    .max((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
+                    .map(e -> e.getKey())
+                    .orElse(Iterables.getFirst(allProviders.keySet(), null));
         }
         return null;
     }
@@ -371,26 +383,39 @@ public class ECLinkStore
         ConnectPoint src = base.src();
         ConnectPoint dst = base.dst();
         Type type = base.type();
-        DefaultAnnotations.Builder builder = DefaultAnnotations.builder();
-        builder.putAll(base.annotations());
+        AtomicReference<DefaultAnnotations> annotations = new AtomicReference<>(DefaultAnnotations.builder().build());
 
-        getAllProviders(linkKey).stream()
-                .map(p -> new Provided<>(linkKey, p))
-                .forEach(key -> {
-                    LinkDescription linkDescription = linkDescriptions.get(key);
+        getAllProviders(linkKey).entrySet().stream()
+                .filter(e -> e.getKey().scheme().equals("lldp"))
+                .map(e -> new Provided<>(linkKey, e.getKey()))
+                .findFirst()
+                .ifPresent(prov -> {
+                    LinkDescription linkDescription = linkDescriptions.get(prov);
                     if (linkDescription != null) {
-                        builder.putAll(linkDescription.annotations());
+                        annotations.set(merge(annotations.get(),
+                                linkDescription.annotations()));
                     }
                 });
 
-        DefaultAnnotations annotations = builder.build();
+        getAllProviders(linkKey).entrySet().stream()
+                .filter(e -> !e.getKey().scheme().equals("lldp"))
+                .sorted((e1, e2) -> e1.getValue().compareTo(e2.getValue()))
+                .map(e -> new Provided<>(linkKey, e.getKey()))
+                .forEach(key -> {
+                    LinkDescription linkDescription = linkDescriptions.get(key);
+                    if (linkDescription != null) {
+                        annotations.set(merge(annotations.get(),
+                                              linkDescription.annotations()));
+                    }
+                });
+
         Link.State initialLinkState;
 
         boolean isExpected;
         if (linkDiscoveryMode == LinkDiscoveryMode.PERMISSIVE) {
             initialLinkState = ACTIVE;
             isExpected =
-                    Objects.equals(annotations.value(AnnotationKeys.DURABLE), "true");
+                    Objects.equals(annotations.get().value(AnnotationKeys.DURABLE), "true");
         } else {
             initialLinkState = base.isExpected() ? ACTIVE : INACTIVE;
             isExpected = base.isExpected();
@@ -404,7 +429,7 @@ public class ECLinkStore
                 .type(type)
                 .state(initialLinkState)
                 .isExpected(isExpected)
-                .annotations(annotations)
+                .annotations(annotations.get())
                 .build();
     }
 
@@ -466,7 +491,7 @@ public class ECLinkStore
     private LinkEvent purgeLinkCache(LinkKey linkKey) {
         Link removedLink = links.remove(linkKey);
         if (removedLink != null) {
-            getAllProviders(linkKey).forEach(p -> linkDescriptions.remove(new Provided<>(linkKey, p)));
+            getAllProviders(linkKey).forEach((p, t) -> linkDescriptions.remove(new Provided<>(linkKey, p)));
             linkProviders.remove(linkKey);
             return new LinkEvent(LINK_REMOVED, removedLink);
         }
@@ -498,7 +523,11 @@ public class ECLinkStore
             if (event.type() == PUT) {
                 linkProviders.compute(event.key().key(), (k, v) ->
                         createOrUpdateLinkProviders(v, event.key().providerId()));
-                notifyDelegate(refreshLinkCache(event.key().key()));
+                // notify delegeta only if the provider was not HostToHostIntentCompiler
+                LinkEvent linkEvent = refreshLinkCache(event.key().key());
+                if (!event.key().providerId().scheme().equals("h2h")) {
+                    notifyDelegate(linkEvent);
+                }
             } else if (event.type() == REMOVE) {
                 notifyDelegate(purgeLinkCache(event.key().key()));
                 linkProviders.remove(event.key().key());

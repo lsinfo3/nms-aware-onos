@@ -20,6 +20,7 @@ import org.onosproject.net.DeviceId;
 import org.onosproject.net.Link;
 import org.onosproject.net.intent.Constraint;
 import org.onosproject.net.intent.constraint.AnnotationConstraint;
+import org.onosproject.net.intent.constraint.AdvancedAnnotationConstraint;
 import org.onosproject.net.intent.constraint.BandwidthConstraint;
 import org.onosproject.net.intent.constraint.LatencyConstraint;
 import org.onosproject.net.intent.constraint.LinkTypeConstraint;
@@ -60,7 +61,7 @@ public final class EncodeConstraintCodecHelper {
         final LatencyConstraint latencyConstraint =
                 (LatencyConstraint) constraint;
         return context.mapper().createObjectNode()
-                .put("latencyMillis", latencyConstraint.latency().toMillis());
+                .put(ConstraintCodec.LATENCY_NANOS, latencyConstraint.latency().toNanos());
     }
 
     /**
@@ -118,6 +119,21 @@ public final class EncodeConstraintCodecHelper {
     }
 
     /**
+     * Encodes a advanced annotation constraint.
+     *
+     * @return JSON ObjectNode representing the constraint
+     */
+    private ObjectNode encodeAdvancedAnnotationConstraint() {
+        checkNotNull(constraint, "Advanced annotation constraint cannot be null");
+        final AdvancedAnnotationConstraint advancedAnnotationConstraint =
+                (AdvancedAnnotationConstraint) constraint;
+        return context.mapper().createObjectNode()
+                .put("key", advancedAnnotationConstraint.key())
+                .put("threshold", advancedAnnotationConstraint.threshold())
+                .put(ConstraintCodec.ISUPPERLIMIT, advancedAnnotationConstraint.isUpperLimit());
+    }
+
+    /**
      * Encodes a bandwidth constraint.
      *
      * @return JSON ObjectNode representing the constraint
@@ -166,6 +182,8 @@ public final class EncodeConstraintCodecHelper {
             result = encodeBandwidthConstraint();
         } else if (constraint instanceof LinkTypeConstraint) {
             result = encodeLinkTypeConstraint();
+        } else if (constraint instanceof AdvancedAnnotationConstraint) {
+            result = encodeAdvancedAnnotationConstraint();
         } else if (constraint instanceof AnnotationConstraint) {
             result = encodeAnnotationConstraint();
         } else if (constraint instanceof LatencyConstraint) {

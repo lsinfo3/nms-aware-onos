@@ -78,8 +78,11 @@ public class LatencyConstraint implements Constraint {
     }
 
     private boolean validate(Path path) {
-        //Guarantee all the latency units in ONOS is nanoseconds.
-        double pathLatency = path.links().stream().mapToDouble(this::cost).sum();
+        // double pathLatency = path.links().stream().mapToDouble(this::cost).sum();
+        double pathLatency = 0.0;
+        for (Link link : path.links()) {
+            pathLatency += this.cost(link);
+        }
         return Duration.of((long) pathLatency, ChronoUnit.NANOS).compareTo(latency) <= 0;
     }
 

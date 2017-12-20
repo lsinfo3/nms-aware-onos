@@ -76,9 +76,13 @@ public class AnnotationConstraint extends BooleanConstraint {
     }
 
     private boolean isValid(Link link) {
-        double value = getAnnotatedValue(link, key);
+        if (link.type() != Link.Type.EDGE) {
+            double value = getAnnotatedValue(link, key);
 
-        return value <= threshold;
+            return value <= threshold;
+        } else {
+            return true;
+        }
     }
 
     // doesn't use LinkResourceService
@@ -90,7 +94,11 @@ public class AnnotationConstraint extends BooleanConstraint {
 
     private double cost(Link link) {
         if (isValid(link)) {
-            return getAnnotatedValue(link, key);
+            if (!link.type().equals(Link.Type.EDGE)) {
+                return getAnnotatedValue(link, key);
+            } else {
+                return 1;
+            }
         } else {
             return -1;
         }

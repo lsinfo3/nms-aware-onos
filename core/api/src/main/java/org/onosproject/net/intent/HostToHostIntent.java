@@ -23,12 +23,17 @@ import com.google.common.collect.ImmutableSet;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.net.HostId;
 import org.onosproject.net.Link;
+import org.onosproject.net.Path;
 import org.onosproject.net.ResourceGroup;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
+import org.onosproject.net.flow.criteria.Criterion;
+import org.onosproject.net.flow.criteria.TcpPortCriterion;
+import org.onosproject.net.flow.criteria.UdpPortCriterion;
 import org.onosproject.net.intent.constraint.LinkTypeConstraint;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -42,6 +47,19 @@ public final class HostToHostIntent extends ConnectivityIntent {
 
     private final HostId one;
     private final HostId two;
+    // the paths where the traffic is routed on for this intent
+    private List<Path> paths;
+
+
+    public List<Path> getPaths() {
+        return paths;
+    }
+
+    public void setPaths(List<Path> paths) {
+        if (paths.size() == 2) {
+            this.paths = paths;
+        }
+    }
 
     /**
      * Returns a new host to host intent builder.
@@ -195,6 +213,51 @@ public final class HostToHostIntent extends ConnectivityIntent {
      */
     public HostId two() {
         return two;
+    }
+
+    /**
+     * Creates a Key containing both host ID's and the traffic selector criteria concatenated as string.
+     * TP source and destination port are not differentiated as HostToHost intent does the calculation for both sides
+     *
+     * @param hostOne the first host ID
+     * @param hostTwo the second host ID
+     * @param selector the traffic selector of the Intent
+     * @param appId the app ID creating the Key
+     * @return a Key
+     */
+    public static Key createSelectorKey(HostId hostOne, HostId hostTwo, TrafficSelector selector, ApplicationId appId) {
+        if (hostOne.toString().compareTo(hostTwo.toString()) < 0) {
+            return Key.of(hostOne.toString() + hostTwo.toString() + selectorKey(selector), appId);
+        } else {
+            return Key.of(hostTwo.toString() + hostOne.toString() + selectorKey(selector), appId);
+        }
+    }
+
+    /**
+     * Create the selector key part.
+     * @param selector the traffic selector
+     * @return concatenated String of the traffic selector
+     */
+    private static String selectorKey(TrafficSelector selector) {
+        return selector.criteria().stream()
+                .map(c -> getCriterionValue(c))
+                .sorted((c1, c2) -> c1.compareTo(c2))
+                .collect(Collectors.toList()).toString();
+    }
+
+    /**
+     * Remove the tcp/udp src/dst types from the criterion string.
+     * @param criterion the traffic criterion
+     * @return a String
+     */
+    private static String getCriterionValue(Criterion criterion) {
+        switch (criterion.type()) {
+            case TCP_SRC: return ((TcpPortCriterion) criterion).tcpPort().toString();
+            case TCP_DST: return ((TcpPortCriterion) criterion).tcpPort().toString();
+            case UDP_SRC: return ((UdpPortCriterion) criterion).udpPort().toString();
+            case UDP_DST: return ((UdpPortCriterion) criterion).udpPort().toString();
+            default: return criterion.toString();
+        }
     }
 
     @Override

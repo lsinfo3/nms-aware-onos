@@ -22,14 +22,14 @@ import com.google.common.net.UrlEscapers;
 import org.onosproject.codec.CodecContext;
 import org.onosproject.codec.JsonCodec;
 import org.onosproject.core.CoreService;
+import org.onosproject.net.intent.PointToPointIntent;
 import org.onosproject.net.Link;
 import org.onosproject.net.ResourceGroup;
 import org.onosproject.net.intent.HostToHostIntent;
 import org.onosproject.net.intent.Intent;
+import org.onosproject.net.intent.Key;
 import org.onosproject.net.intent.IntentService;
 import org.onosproject.net.intent.IntentState;
-import org.onosproject.net.intent.Key;
-import org.onosproject.net.intent.PointToPointIntent;
 import org.onosproject.net.intent.SinglePointToMultiPointIntent;
 import org.onosproject.net.intent.MultiPointToSinglePointIntent;
 

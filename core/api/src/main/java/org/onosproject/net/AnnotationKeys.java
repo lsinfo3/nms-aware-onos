@@ -15,12 +15,16 @@
  */
 package org.onosproject.net;
 
+
+import java.time.Duration;
+
 /**
  * Collection of keys for annotation.
  * <p>
  * Number of the annotation keys have been deprecated as the use of annotations
  * is being phased out and instead network configuration subsystem is being
  * phased-in for majority of model meta-data.
+ * </p>
  */
 public final class AnnotationKeys {
 
@@ -210,9 +214,22 @@ public final class AnnotationKeys {
     public static double getAnnotatedValue(Annotated annotated, String key) {
         double value;
         try {
-            value = Double.parseDouble(annotated.annotations().value(key));
+            switch (key) {
+                // Latency has to be parsed differently from other values
+                case LATENCY: String annotation = annotated.annotations().value(key);
+                    value = Duration.parse(annotation).getNano();
+                    break;
+                default: value = Double.parseDouble(annotated.annotations().value(key));
+                    break;
+            }
         } catch (NumberFormatException e) {
-            value = DEFAULT_VALUE;
+            value = 1.0;
+        } catch (NullPointerException e) {
+            if (key == "latency") {
+                value = 0.0;
+            } else {
+                throw e;
+            }
         }
         return value;
     }

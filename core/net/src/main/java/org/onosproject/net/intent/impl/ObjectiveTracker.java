@@ -294,6 +294,8 @@ public class ObjectiveTracker implements ObjectiveTrackerService {
                                 linkEvent.subject().isExpected()));
                     }
                 }
+                log.debug("Recompile for intents:\n{}\nRecompile all failed intents: {}",
+                        intentsToRecompile, !dontRecompileAllFailedIntents);
                 delegate.triggerCompile(intentsToRecompile, !dontRecompileAllFailedIntents);
             }
         }

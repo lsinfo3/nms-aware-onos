@@ -24,6 +24,7 @@ import org.onosproject.net.DeviceId;
 import org.onosproject.net.Link;
 import org.onosproject.net.intent.Constraint;
 import org.onosproject.net.intent.constraint.AnnotationConstraint;
+import org.onosproject.net.intent.constraint.AdvancedAnnotationConstraint;
 import org.onosproject.net.intent.constraint.AsymmetricPathConstraint;
 import org.onosproject.net.intent.constraint.BandwidthConstraint;
 import org.onosproject.net.intent.constraint.DomainConstraint;
@@ -96,16 +97,36 @@ public final class DecodeConstraintCodecHelper {
     }
 
     /**
+     * Decodes an advanced annotation constraint.
+     *
+     * @return advanced annotation constraint object.
+     */
+    private Constraint decodeAdvancedAnnotationConstraint() {
+        String key = nullIsIllegal(json.get(ConstraintCodec.KEY),
+                ConstraintCodec.KEY + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+                .asText();
+        double threshold = nullIsIllegal(json.get(ConstraintCodec.THRESHOLD),
+                ConstraintCodec.THRESHOLD + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+                .asDouble();
+
+        boolean isUpperLimit = nullIsIllegal(json.get(ConstraintCodec.ISUPPERLIMIT),
+                ConstraintCodec.ISUPPERLIMIT + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+                .asBoolean();
+
+        return new AdvancedAnnotationConstraint(key, threshold, isUpperLimit);
+    }
+
+    /**
      * Decodes a latency constraint.
      *
      * @return latency constraint object.
      */
     private Constraint decodeLatencyConstraint() {
-        long latencyMillis = nullIsIllegal(json.get(ConstraintCodec.LATENCY_MILLIS),
-                ConstraintCodec.LATENCY_MILLIS + ConstraintCodec.MISSING_MEMBER_MESSAGE)
+        long latencyNanos = nullIsIllegal(json.get(ConstraintCodec.LATENCY_NANOS),
+                ConstraintCodec.LATENCY_NANOS + ConstraintCodec.MISSING_MEMBER_MESSAGE)
                 .asLong();
 
-        return new LatencyConstraint(Duration.ofMillis(latencyMillis));
+        return new LatencyConstraint(Duration.ofNanos(latencyNanos));
     }
 
     /**
@@ -217,6 +238,12 @@ public final class DecodeConstraintCodecHelper {
             return decodeWaypointConstraint();
         } else if (type.equals(AsymmetricPathConstraint.class.getSimpleName())) {
             return decodeAsymmetricPathConstraint();
+        } else if (type.equals(LinkTypeConstraint.class.getSimpleName())) {
+            return decodeLinkTypeConstraint();
+        } else if (type.equals(AnnotationConstraint.class.getSimpleName())) {
+            return decodeAnnotationConstraint();
+        } else if (type.equals(AdvancedAnnotationConstraint.class.getSimpleName())) {
+            return decodeAdvancedAnnotationConstraint();
         } else if (type.equals(DomainConstraint.class.getSimpleName())) {
             return decodeDomainConstraint();
         } else if (type.equals(NonDisruptiveConstraint.class.getSimpleName())) {

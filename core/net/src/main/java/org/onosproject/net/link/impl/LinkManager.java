@@ -382,11 +382,9 @@ public class LinkManager
                 desc = BasicLinkOperator.combine(cfg,
                         BasicLinkOperator.descriptionOf(src, dst, link));
             }
-
-            ProviderId pid = Optional.ofNullable(link)
-                    .map(Link::providerId)
-                    .orElse(ProviderId.NONE);
-            store.createOrUpdateLink(pid, desc);
+            // XXX think of sane way to fetch the LinkProvider
+            store.createOrUpdateLink(new ProviderId("cfg", "core.net.linkmanager"), desc);
+            store.createOrUpdateLink(new ProviderId("cfg", "core.net.linkmanager"), desc);
         }
     }
 }

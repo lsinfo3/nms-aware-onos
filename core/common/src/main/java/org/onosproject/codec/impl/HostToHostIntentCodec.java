@@ -17,7 +17,10 @@ package org.onosproject.codec.impl;
 
 import org.onosproject.codec.CodecContext;
 import org.onosproject.codec.JsonCodec;
+import org.onosproject.core.CoreService;
 import org.onosproject.net.HostId;
+import org.onosproject.net.flow.DefaultTrafficSelector;
+import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.intent.ConnectivityIntent;
 import org.onosproject.net.intent.HostToHostIntent;
 
@@ -59,11 +62,28 @@ public final class HostToHostIntentCodec extends JsonCodec<HostToHostIntent> {
 
         String one = nullIsIllegal(json.get(ONE),
                 ONE + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
-        builder.one(HostId.hostId(one));
+        HostId oneId = HostId.hostId(one);
+        builder.one(oneId);
 
         String two = nullIsIllegal(json.get(TWO),
                 TWO + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
-        builder.two(HostId.hostId(two));
+        HostId twoId = HostId.hostId(two);
+        builder.two(twoId);
+
+        String appId = nullIsIllegal(json.get(IntentCodec.APP_ID),
+                IntentCodec.APP_ID + IntentCodec.MISSING_MEMBER_MESSAGE).asText();
+
+        // create the HostToHost selector specific key
+        CoreService service = context.getService(CoreService.class);
+
+        TrafficSelector selector = DefaultTrafficSelector.emptySelector();
+        ObjectNode selectorJson = get(json, "selector");
+        if (selectorJson != null) {
+            JsonCodec<TrafficSelector> selectorCodec = context.codec(TrafficSelector.class);
+            selector = selectorCodec.decode(selectorJson, context);
+        }
+
+        builder.key(HostToHostIntent.createSelectorKey(oneId, twoId, selector, service.getAppId(appId)));
 
         return builder.build();
     }
