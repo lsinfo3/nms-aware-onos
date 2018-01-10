@@ -181,6 +181,7 @@ public class LinkCollectionIntentCompiler
                         .withPriority(intent.priority())
                         .fromApp(appId)
                         .makePermanent()
+                        .forTable(100)
                         .build();
                 rules.add(rule);
             }
