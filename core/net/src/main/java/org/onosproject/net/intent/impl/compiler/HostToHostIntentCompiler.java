@@ -388,7 +388,7 @@ public class HostToHostIntentCompiler
         FilteredConnectPoint egressPoint = getFilteredPointFromLink(egressLink);
 
         TrafficSelector.Builder selectorBuilder = builder(intent.selector())
-                .matchEthSrc(src.mac()).matchEthDst(dst.mac());
+                .matchEthSrc(src.mac());
 
         // if source and destination are inverted, invert the traffic selector
         if (intent.one().equals(dst.id()) && intent.two().equals(src.id())) {
