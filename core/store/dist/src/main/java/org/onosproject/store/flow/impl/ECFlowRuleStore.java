@@ -108,7 +108,7 @@ import static org.slf4j.LoggerFactory.getLogger;
 /**
  * Manages inventory of flow rules using a distributed state management protocol.
  */
-@Component(enabled = false)
+@Component(immediate = true)
 @Service
 public class ECFlowRuleStore
         extends AbstractStore<FlowRuleBatchEvent, FlowRuleStoreDelegate>
@@ -470,6 +470,7 @@ public class ECFlowRuleStore
                     StoredFlowEntry entry;
                     switch (op.operator()) {
                         case ADD:
+                        case MODIFY:
                             entry = new DefaultFlowEntry(op.target());
                             // always add requested FlowRule
                             // Note: 2 equal FlowEntry may have different treatment
@@ -485,9 +486,6 @@ public class ECFlowRuleStore
                                 log.debug("Setting state of rule to pending remove: {}", entry);
                                 return op;
                             }
-                            break;
-                        case MODIFY:
-                            //TODO: figure this out at some point
                             break;
                         default:
                             log.warn("Unknown flow operation operator: {}", op.operator());

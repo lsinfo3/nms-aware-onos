@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import org.onlab.osgi.ServiceDirectory;
 import org.onlab.packet.Ethernet;
+import org.onlab.packet.EthType.EtherType;
 import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpPrefix;
 import org.onlab.packet.VlanId;
@@ -65,6 +66,7 @@ import org.onosproject.net.flow.instructions.Instructions.OutputInstruction;
 import org.onosproject.net.flow.instructions.L2ModificationInstruction;
 import org.onosproject.net.flow.instructions.L2ModificationInstruction.L2SubType;
 import org.onosproject.net.flow.instructions.L2ModificationInstruction.ModVlanIdInstruction;
+import org.onosproject.net.flow.instructions.L2ModificationInstruction.ModMplsHeaderInstruction;
 import org.onosproject.net.flow.instructions.L3ModificationInstruction;
 import org.onosproject.net.flow.instructions.L3ModificationInstruction.L3SubType;
 import org.onosproject.net.flowobjective.FilteringObjective;
@@ -194,6 +196,33 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
         // OF-DPA does not require initializing the pipeline as it puts default
         // rules automatically in the hardware. However emulation of OFDPA in
         // software switches does require table-miss-entries.
+    }
+
+    /**
+     * Determines whether this pipeline requires MPLS POP instruction.
+     *
+     * @return true to use MPLS POP instruction
+     */
+    public boolean requireMplsPop() {
+        return true;
+    }
+
+    /**
+     * Determines whether this pipeline requires MPLS BOS match.
+     *
+     * @return true to use MPLS BOS match
+     */
+    public boolean requireMplsBosMatch() {
+        return true;
+    }
+
+    /**
+     * Determines whether this pipeline requires MPLS TTL decrement and copy.
+     *
+     * @return true to use MPLS TTL decrement and copy
+     */
+    public boolean requireMplsTtlModification() {
+        return true;
     }
 
     /**
@@ -407,12 +436,11 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
 
         VlanId assignedVlan = null;
         if (vidCriterion != null) {
-            // Use the VLAN in metadata whenever a metadata is provided
-            if (filt.meta() != null) {
-                assignedVlan = readVlanFromTreatment(filt.meta());
             // Use the VLAN in criterion if metadata is not present and the traffic is tagged
-            } else if (!vidCriterion.vlanId().equals(VlanId.NONE)) {
+            if (!vidCriterion.vlanId().equals(VlanId.NONE)) {
                 assignedVlan = vidCriterion.vlanId();
+            } else if (filt.meta() != null) {
+                assignedVlan = readVlanFromTreatment(filt.meta());
             }
 
             if (assignedVlan == null) {
@@ -434,7 +462,18 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
                                                          applicationId)) {
                 log.trace("{} MAC filtering rules in TMAC table: {} for dev: {}",
                           (install) ? "adding" : "removing", tmacRule, deviceId);
-                ops = install ? ops.add(tmacRule) : ops.remove(tmacRule);
+
+                if (install) {
+                    ops = ops.add(tmacRule);
+                } else {
+                    // NOTE: Only remove TMAC flow when there is no more enabled port within the
+                    // same VLAN on this device if TMAC doesn't support matching on in_port.
+                    if (matchInPortTmacTable() || (filt.meta() != null && filt.meta().clearedDeferred())) {
+                        ops = ops.remove(tmacRule);
+                    } else {
+                        log.debug("Abort TMAC flow removal on {}. Some other ports still share this TMAC flow");
+                    }
+                }
             }
         }
 
@@ -703,11 +742,11 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
     /**
      * Builds TMAC rules for IPv4 packets.
      *
-     * @param ethCriterion
-     * @param vidCriterion
-     * @param ofdpaMatchVlanVid
-     * @param applicationId
-     * @param pnum
+     * @param ethCriterion dst mac matching
+     * @param vidCriterion vlan id assigned to the port
+     * @param ofdpaMatchVlanVid OFDPA vlan id matching
+     * @param applicationId application id
+     * @param pnum port number
      * @return TMAC rule for IPV4 packets
      */
     private FlowRule buildTmacRuleForIpv4(EthCriterion ethCriterion,
@@ -748,11 +787,11 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
     /**
      * Builds TMAC rule for MPLS packets.
      *
-     * @param ethCriterion
-     * @param vidCriterion
-     * @param ofdpaMatchVlanVid
-     * @param applicationId
-     * @param pnum
+     * @param ethCriterion dst mac matching
+     * @param vidCriterion vlan id assigned to the port
+     * @param ofdpaMatchVlanVid OFDPA vlan id matching
+     * @param applicationId application id
+     * @param pnum port number
      * @return TMAC rule for MPLS packets
      */
     private FlowRule buildTmacRuleForMpls(EthCriterion ethCriterion,
@@ -793,11 +832,11 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
     /**
      * Builds TMAC rules for IPv6 packets.
      *
-     * @param ethCriterion
-     * @param vidCriterion
-     * @param ofdpaMatchVlanVid
-     * @param applicationId
-     * @param pnum
+     * @param ethCriterion dst mac matching
+     * @param vidCriterion vlan id assigned to the port
+     * @param ofdpaMatchVlanVid OFDPA vlan id matching
+     * @param applicationId application id
+     * @param pnum port number
      * @return TMAC rule for IPV6 packets
      */
      private FlowRule buildTmacRuleForIpv6(EthCriterion ethCriterion,
@@ -969,14 +1008,12 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
                 } else {
                     sbuilder.matchVlanId(vlanId);
                 }
-            } else if (criterion instanceof Icmpv6TypeCriterion ||
-                    criterion instanceof Icmpv6CodeCriterion) {
-                /*
-                 * We silenty discard these criterions, our current
-                 * OFDPA platform does not support these matches on
-                 * the ACL table.
-                 */
-                log.warn("ICMPv6 Type and ICMPv6 Code are not supported");
+            } else if (criterion instanceof Icmpv6TypeCriterion) {
+                byte icmpv6Type = (byte) ((Icmpv6TypeCriterion) criterion).icmpv6Type();
+                sbuilder.matchIcmpv6Type(icmpv6Type);
+            } else if (criterion instanceof Icmpv6CodeCriterion) {
+                byte icmpv6Code = (byte) ((Icmpv6CodeCriterion) criterion).icmpv6Code();
+                sbuilder.matchIcmpv6Type(icmpv6Code);
             } else if (criterion instanceof TcpPortCriterion || criterion instanceof UdpPortCriterion) {
                 // FIXME: QMX switches do not support L4 dst port matching in ACL table.
                 // Currently L4 dst port matching is only used by DHCP relay feature
@@ -1165,7 +1202,7 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
                         selector.getCriterion(Criterion.Type.MPLS_LABEL)).label());
             MplsBosCriterion bos = (MplsBosCriterion) selector
                                         .getCriterion(MPLS_BOS);
-            if (bos != null) {
+            if (bos != null && requireMplsBosMatch()) {
                 filteredSelector.matchMplsBos(bos.mplsBos());
             }
             forTableId = MPLS_TABLE_1;
@@ -1179,18 +1216,30 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
                         popMpls = true;
                         // OF-DPA does not pop in MPLS table in some cases. For the L3 VPN, it requires
                         // setting the MPLS_TYPE so pop can happen down the pipeline
-                        if (mplsNextTable == MPLS_TYPE_TABLE && isNotMplsBos(selector)) {
-                            tb.immediate().popMpls();
+                        if (requireMplsPop()) {
+                            if (mplsNextTable == MPLS_TYPE_TABLE && isNotMplsBos(selector)) {
+                                tb.immediate().popMpls();
+                            }
+                        } else {
+                            // Skip mpls pop action for mpls_unicast label
+                            if (instr instanceof ModMplsHeaderInstruction &&
+                                    !((ModMplsHeaderInstruction) instr).ethernetType()
+                                            .equals(EtherType.MPLS_UNICAST.ethType())) {
+                                tb.immediate().add(instr);
+                            }
                         }
                     }
-                    if (instr instanceof L3ModificationInstruction &&
-                            ((L3ModificationInstruction) instr).subtype() == L3SubType.DEC_TTL) {
-                        // FIXME Should modify the app to send the correct DEC_MPLS_TTL instruction
-                        tb.immediate().decMplsTtl();
-                    }
-                    if (instr instanceof L3ModificationInstruction &&
-                            ((L3ModificationInstruction) instr).subtype() == L3SubType.TTL_IN) {
-                        tb.immediate().add(instr);
+
+                    if (requireMplsTtlModification()) {
+                        if (instr instanceof L3ModificationInstruction &&
+                                ((L3ModificationInstruction) instr).subtype() == L3SubType.DEC_TTL) {
+                            // FIXME Should modify the app to send the correct DEC_MPLS_TTL instruction
+                            tb.immediate().decMplsTtl();
+                        }
+                        if (instr instanceof L3ModificationInstruction &&
+                                ((L3ModificationInstruction) instr).subtype() == L3SubType.TTL_IN) {
+                            tb.immediate().add(instr);
+                        }
                     }
                 }
             }
@@ -1582,7 +1631,7 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
         return ethTypeCriterion != null && ethTypeCriterion.ethType().toShort() == Ethernet.TYPE_IPV6;
     }
 
-    static VlanId readVlanFromSelector(TrafficSelector selector) {
+    public static VlanId readVlanFromSelector(TrafficSelector selector) {
         if (selector == null) {
             return null;
         }
@@ -1615,12 +1664,12 @@ public class Ofdpa2Pipeline extends AbstractHandlerBehaviour implements Pipeline
      *  Utility class that retries sending flows a fixed number of times, even if
      *  some of the attempts are successful. Used only for forwarding objectives.
      */
-    protected final class RetryFlows implements Runnable {
+    public final class RetryFlows implements Runnable {
         int attempts = MAX_RETRY_ATTEMPTS;
         private Collection<FlowRule> retryFlows;
         private ForwardingObjective fwd;
 
-        RetryFlows(ForwardingObjective fwd, Collection<FlowRule> retryFlows) {
+        public RetryFlows(ForwardingObjective fwd, Collection<FlowRule> retryFlows) {
             this.fwd = fwd;
             this.retryFlows = retryFlows;
         }

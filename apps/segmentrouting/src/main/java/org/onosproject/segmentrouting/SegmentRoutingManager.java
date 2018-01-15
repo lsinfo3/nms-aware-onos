@@ -15,6 +15,7 @@
  */
 package org.onosproject.segmentrouting;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
@@ -24,6 +25,8 @@ import com.google.common.collect.Sets;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Deactivate;
+import org.apache.felix.scr.annotations.Modified;
+import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.Service;
@@ -35,6 +38,7 @@ import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpPrefix;
 import org.onlab.packet.VlanId;
 import org.onlab.util.KryoNamespace;
+import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
@@ -64,6 +68,7 @@ import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.host.HostEvent;
 import org.onosproject.net.host.HostListener;
+import org.onosproject.net.host.HostLocationProbingService;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.host.InterfaceIpAddress;
 import org.onosproject.net.intf.Interface;
@@ -79,7 +84,6 @@ import org.onosproject.net.packet.InboundPacket;
 import org.onosproject.net.packet.PacketContext;
 import org.onosproject.net.packet.PacketProcessor;
 import org.onosproject.net.packet.PacketService;
-import org.onosproject.net.topology.PathService;
 import org.onosproject.net.topology.TopologyService;
 import org.onosproject.routeservice.ResolvedRoute;
 import org.onosproject.routeservice.RouteEvent;
@@ -106,10 +110,12 @@ import org.onosproject.store.service.EventuallyConsistentMap;
 import org.onosproject.store.service.EventuallyConsistentMapBuilder;
 import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.WallClockTimestamp;
+import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
+import java.util.Dictionary;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -146,9 +152,6 @@ public class SegmentRoutingManager implements SegmentRoutingService {
     private NeighbourResolutionService neighbourResolutionService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    public PathService pathService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     CoreService coreService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
@@ -156,6 +159,9 @@ public class SegmentRoutingManager implements SegmentRoutingService {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     HostService hostService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    HostLocationProbingService probingService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     DeviceService deviceService;
@@ -176,7 +182,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
     MulticastRouteService multicastRouteService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    TopologyService topologyService;
+    public TopologyService topologyService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     RouteService routeService;
@@ -186,6 +192,10 @@ public class SegmentRoutingManager implements SegmentRoutingService {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     public InterfaceService interfaceService;
+
+    @Property(name = "activeProbing", boolValue = true,
+            label = "Enable active probing to discover dual-homed hosts.")
+    boolean activeProbing = true;
 
     ArpHandler arpHandler = null;
     IcmpHandler icmpHandler = null;
@@ -226,19 +236,19 @@ public class SegmentRoutingManager implements SegmentRoutingService {
      * Per device next objective ID store with (device id + destination set) as key.
      * Used to keep track on MPLS group information.
      */
-    EventuallyConsistentMap<DestinationSetNextObjectiveStoreKey, NextNeighbors>
+    private EventuallyConsistentMap<DestinationSetNextObjectiveStoreKey, NextNeighbors>
             dsNextObjStore = null;
     /**
      * Per device next objective ID store with (device id + vlanid) as key.
      * Used to keep track on L2 flood group information.
      */
-    EventuallyConsistentMap<VlanNextObjectiveStoreKey, Integer>
+    private EventuallyConsistentMap<VlanNextObjectiveStoreKey, Integer>
             vlanNextObjStore = null;
     /**
      * Per device next objective ID store with (device id + port + treatment + meta) as key.
      * Used to keep track on L2 interface group and L3 unicast group information.
      */
-    EventuallyConsistentMap<PortNextObjectiveStoreKey, Integer>
+    private EventuallyConsistentMap<PortNextObjectiveStoreKey, Integer>
             portNextObjStore = null;
 
     // Local store for all links seen and their present status, used for
@@ -323,7 +333,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
     public static final VlanId INTERNAL_VLAN = VlanId.vlanId((short) 4094);
 
     @Activate
-    protected void activate() {
+    protected void activate(ComponentContext context) {
         appId = coreService.registerApplication(APP_NAME);
 
         log.debug("Creating EC map nsnextobjectivestore");
@@ -392,6 +402,8 @@ public class SegmentRoutingManager implements SegmentRoutingService {
                                       "staleLinkAge", "15000");
         compCfgService.preSetProperty("org.onosproject.net.host.impl.HostManager",
                                       "allowDuplicateIps", "false");
+        compCfgService.registerProperties(getClass());
+        modified(context);
 
         processor = new InternalPacketProcessor();
         linkListener = new InternalLinkListener();
@@ -410,6 +422,9 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         cfgService.registerConfigFactory(xConnectConfigFactory);
         cfgService.registerConfigFactory(mcastConfigFactory);
         cfgService.registerConfigFactory(pwaasConfigFactory);
+
+        cfgListener.configureNetwork();
+
         hostService.addListener(hostListener);
         packetService.addProcessor(processor, PacketProcessor.director(2));
         linkService.addListener(linkListener);
@@ -417,7 +432,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         multicastRouteService.addListener(mcastListener);
         routeService.addListener(routeListener);
 
-        cfgListener.configureNetwork();
+        l2TunnelHandler.init();
 
         log.info("Started");
     }
@@ -449,6 +464,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         cfgService.unregisterConfigFactory(xConnectConfigFactory);
         cfgService.unregisterConfigFactory(mcastConfigFactory);
         cfgService.unregisterConfigFactory(pwaasConfigFactory);
+        compCfgService.unregisterProperties(getClass(), false);
 
         hostService.removeListener(hostListener);
         packetService.removeProcessor(processor);
@@ -470,6 +486,22 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         tunnelStore.destroy();
         policyStore.destroy();
         log.info("Stopped");
+    }
+
+    @Modified
+    private void modified(ComponentContext context) {
+        Dictionary<?, ?> properties = context.getProperties();
+        if (properties == null) {
+            return;
+        }
+
+        String strActiveProving = Tools.get(properties, "activeProbing");
+        boolean expectActiveProbing = Boolean.parseBoolean(strActiveProving);
+
+        if (expectActiveProbing != activeProbing) {
+            activeProbing = expectActiveProbing;
+            log.info("{} active probing", activeProbing ? "Enabling" : "Disabling");
+        }
     }
 
     @Override
@@ -526,11 +558,12 @@ public class SegmentRoutingManager implements SegmentRoutingService {
                                          String cP1InnerVlan, String cP1OuterVlan, String cP2,
                                          String cP2InnerVlan, String cP2OuterVlan,
                                          String mode, String sdTag) {
-
+        // Try to inject an empty Pwaas config if it is not found for the first time
         PwaasConfig config = cfgService.getConfig(appId(), PwaasConfig.class);
         if (config == null) {
-            log.warn("Configuration for Pwaas class could not be found!");
-            return L2TunnelHandler.Result.CONFIG_NOT_FOUND;
+            log.debug("Pwaas config not found. Try to create an empty one.");
+            cfgService.applyConfig(appId(), PwaasConfig.class, new ObjectMapper().createObjectNode());
+            config = cfgService.getConfig(appId(), PwaasConfig.class);
         }
 
         ObjectNode object = config.addPseudowire(tunnelId, pwLabel,
@@ -922,7 +955,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
      *         true if the seen-link is up;
      *         false if the seen-link is down
      */
-    Boolean isSeenLinkUp(Link link) {
+    private Boolean isSeenLinkUp(Link link) {
         return seenLinks.get(link);
     }
 
@@ -970,7 +1003,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
      * @return true if another unidirectional link exists in the reverse direction,
      *              has been seen-before and is up
      */
-    public boolean isBidirectional(Link link) {
+    boolean isBidirectional(Link link) {
         Link reverseLink = linkService.getLink(link.dst(), link.src());
         if (reverseLink == null) {
             return false;
@@ -989,7 +1022,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
      * @param link the infrastructure link being queried
      * @return true if link should be avoided
      */
-    public boolean avoidLink(Link link) {
+    boolean avoidLink(Link link) {
         // XXX currently only avoids all pair-links. In the future can be
         // extended to avoid any generic link
         DeviceId src = link.src().deviceId();
@@ -1012,12 +1045,9 @@ public class SegmentRoutingManager implements SegmentRoutingService {
             return false;
         }
 
-        if (srcPort.equals(pairLocalPort) &&
+        return srcPort.equals(pairLocalPort) &&
                 link.dst().deviceId().equals(pairDev) &&
-                link.dst().port().equals(pairRemotePort)) {
-            return true;
-        }
-        return false;
+                link.dst().port().equals(pairRemotePort);
     }
 
     private class InternalPacketProcessor implements PacketProcessor {
@@ -1210,12 +1240,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
 
     private void processLinkAdded(Link link) {
         log.info("** LINK ADDED {}", link.toString());
-        if (link.type() != Link.Type.DIRECT) {
-            // NOTE: A DIRECT link might be transiently marked as INDIRECT
-            //       if BDDP is received before LLDP. We can safely ignore that
-            //       until the LLDP is received and the link is marked as DIRECT.
-            log.info("Ignore link {}->{}. Link type is {} instead of DIRECT.",
-                    link.src(), link.dst(), link.type());
+        if (!isLinkValid(link)) {
             return;
         }
         if (!deviceConfiguration.isConfigured(link.src().deviceId())) {
@@ -1290,6 +1315,9 @@ public class SegmentRoutingManager implements SegmentRoutingService {
 
     private void processLinkRemoved(Link link) {
         log.info("** LINK REMOVED {}", link.toString());
+        if (!isLinkValid(link)) {
+            return;
+        }
         defaultRoutingHandler.populateRoutingRulesForLinkStatusChange(link, null, null);
 
         // update local groupHandler stores
@@ -1313,6 +1341,58 @@ public class SegmentRoutingManager implements SegmentRoutingService {
 
         mcastHandler.processLinkDown(link);
         l2TunnelHandler.processLinkDown(link);
+    }
+
+    private boolean isLinkValid(Link link) {
+        if (link.type() != Link.Type.DIRECT) {
+            // NOTE: A DIRECT link might be transiently marked as INDIRECT
+            // if BDDP is received before LLDP. We can safely ignore that
+            // until the LLDP is received and the link is marked as DIRECT.
+            log.info("Ignore link {}->{}. Link type is {} instead of DIRECT.",
+                     link.src(), link.dst(), link.type());
+            return false;
+        }
+        DeviceId srcId = link.src().deviceId();
+        DeviceId dstId = link.dst().deviceId();
+        if (srcId.equals(dstId)) {
+            log.warn("Links between ports on the same switch are not "
+                    + "allowed .. ignoring link {}", link);
+            return false;
+        }
+        try {
+            if (!deviceConfiguration.isEdgeDevice(srcId)
+                    && !deviceConfiguration.isEdgeDevice(dstId)) {
+                // ignore links between spines
+                // XXX revisit when handling multi-stage fabrics
+                log.warn("Links between spines not allowed...ignoring "
+                        + "link {}", link);
+                return false;
+            }
+            if (deviceConfiguration.isEdgeDevice(srcId)
+                    && deviceConfiguration.isEdgeDevice(dstId)) {
+                // ignore links between leaves if they are not pair-links
+                // XXX revisit if removing pair-link config or allowing more than
+                // one pair-link
+                if (deviceConfiguration.getPairDeviceId(srcId).equals(dstId)
+                        && deviceConfiguration.getPairLocalPort(srcId)
+                                .equals(link.src().port())
+                        && deviceConfiguration.getPairLocalPort(dstId)
+                                .equals(link.dst().port())) {
+                    // found pair link - allow it
+                    return true;
+                } else {
+                    log.warn("Links between leaves other than pair-links are "
+                            + "not allowed...ignoring link {}", link);
+                    return false;
+                }
+            }
+        } catch (DeviceConfigNotFoundException e) {
+            // We still want to count the links in seenLinks even though there
+            // is no config. So we let it return true
+            log.warn("Could not check validity of link {} as subtending devices "
+                    + "are not yet configured", link);
+        }
+        return true;
     }
 
     private void processDeviceAdded(Device device) {
@@ -1374,9 +1454,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
     private void processDeviceRemoved(Device device) {
         dsNextObjStore.entrySet().stream()
                 .filter(entry -> entry.getKey().deviceId().equals(device.id()))
-                .forEach(entry -> {
-                    dsNextObjStore.remove(entry.getKey());
-                });
+                .forEach(entry -> dsNextObjStore.remove(entry.getKey()));
         vlanNextObjStore.entrySet().stream()
                 .filter(entry -> entry.getKey().deviceId().equals(device.id()))
                 .forEach(entry -> vlanNextObjStore.remove(entry.getKey()));
@@ -1456,6 +1534,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         if (portUp) {
             log.info("Device:EdgePort {}:{} is enabled in vlan: {}", device.id(),
                      port.number(), vlanId);
+            hostHandler.processPortUp(new ConnectPoint(device.id(), port.number()));
         } else {
             log.info("Device:EdgePort {}:{} is disabled in vlan: {}", device.id(),
                      port.number(), vlanId);
@@ -1509,7 +1588,7 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         /**
          * Reads network config and initializes related data structure accordingly.
          */
-        public void configureNetwork() {
+        void configureNetwork() {
             createOrUpdateDeviceConfiguration();
 
             arpHandler = new ArpHandler(srManager);
@@ -1615,6 +1694,19 @@ public class SegmentRoutingManager implements SegmentRoutingService {
                         break;
                 }
             }
+        }
+
+        @Override
+        public boolean isRelevant(NetworkConfigEvent event) {
+            if (event.configClass().equals(SegmentRoutingDeviceConfig.class) ||
+                    event.configClass().equals(SegmentRoutingAppConfig.class) ||
+                    event.configClass().equals(InterfaceConfig.class) ||
+                    event.configClass().equals(XConnectConfig.class) ||
+                    event.configClass().equals(PwaasConfig.class)) {
+                return true;
+            }
+            log.debug("Ignore irrelevant event class {}", event.configClass().getName());
+            return false;
         }
 
         private final class ConfigChange implements Runnable {
